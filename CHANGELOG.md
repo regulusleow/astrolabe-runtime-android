@@ -1,0 +1,15 @@
+# Changelog
+
+All notable changes to Astrolabe Runtime for Android are documented here.
+
+## 2.0.0
+
+- Added Android View hierarchy, node-detail, semantic attribute, and geometry
+  inspection.
+- Added emulator and USB device discovery through ADB forwarding.
+- Added allowlisted in-memory presentation patches with rollback.
+- Added automatic debug-process startup with no application code changes.
+- Added one debug-only Fused AAR containing the public facade and internal
+  Runtime modules.
+- Added Maven Central release automation with signed artifacts, checksums, and
+  release validation.
