@@ -1,0 +1,10 @@
+{
+  "name": "astrolabe-runtime-android-release-tools",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "release:central": "node scripts/central-release.mjs",
+    "test": "node --test test/*.test.mjs"
+  }
+}
