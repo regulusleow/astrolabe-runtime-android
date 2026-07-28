@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-test("release metadata and Protocol dependency match the Runtime version", async () => {
+test("release metadata is consistent and Protocol uses the same major version", async () => {
   const [
     gradleProperties,
     versionCatalog,
@@ -33,7 +33,11 @@ test("release metadata and Protocol dependency match the Runtime version", async
   );
 
   assert.equal(packageMetadata.version, runtimeVersion);
-  assert.equal(protocolVersion, runtimeVersion);
+  assert.equal(
+    semverMajor(protocolVersion),
+    semverMajor(runtimeVersion),
+    "Runtime and Protocol must use the same major version"
+  );
   assert.match(readme, new RegExp(`Current release: \\\`${runtimeVersion}\\\``));
   assert.match(
     readme,
@@ -54,4 +58,8 @@ function requiredCapture(source, pattern, label) {
   const value = source.match(pattern)?.[1];
   assert.ok(value, `${label} is missing`);
   return value;
+}
+
+function semverMajor(version) {
+  return version.split(".", 1)[0];
 }

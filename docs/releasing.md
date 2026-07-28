@@ -43,7 +43,7 @@ cd ../astrolabe-runtime-android
 npm ci
 npm test
 
-RELEASE_TAG=2.0.0 \
+RELEASE_TAG=2.0.1 \
 CENTRAL_BUNDLE_ONLY=true \
 ORG_GRADLE_PROJECT_astrolabeUseMavenLocal=true \
 MAVEN_SIGNING_KEY_ID=<key-id> \

@@ -6,7 +6,7 @@ Astrolabe Android Runtime 在开发阶段向 Astrolabe Host 提供 Android View
 层级和表现属性。应用只需添加一项 Debug 依赖；Runtime 会自动启动，并且不会进入
 Release 构建。
 
-当前版本：`2.0.0`。
+当前版本：`2.0.1`。
 
 ## 环境要求
 
@@ -23,7 +23,7 @@ Release 构建。
 ```kotlin
 dependencies {
     debugImplementation(
-        "io.github.regulusleow:astrolabe-runtime-android:2.0.0"
+        "io.github.regulusleow:astrolabe-runtime-android:2.0.1"
     )
 }
 ```

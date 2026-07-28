@@ -2,6 +2,11 @@
 
 All notable changes to Astrolabe Runtime for Android are documented here.
 
+## 2.0.1
+
+- Lowered the published AAR compile SDK requirement from API 36.1 to API 35.
+- Kept the Runtime minimum supported Android version at API 23.
+
 ## 2.0.0
 
 - Added Android View hierarchy, node-detail, semantic attribute, and geometry
