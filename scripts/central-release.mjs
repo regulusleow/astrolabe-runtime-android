@@ -129,7 +129,7 @@ if (resolve(process.argv[1] ?? "") === scriptPath) {
     process.stdout.write(`${JSON.stringify(result)}\n`);
   } catch (error) {
     process.stderr.write(
-      `发布失败：${error instanceof Error ? error.message : String(error)}\n`
+      `Release failed: ${error instanceof Error ? error.message : String(error)}\n`
     );
     process.exitCode = 1;
   }

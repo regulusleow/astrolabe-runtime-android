@@ -18,7 +18,7 @@ internal class AstrolabeRuntimeInitializer : ContentProvider() {
     override fun onCreate(): Boolean {
         val applicationContext = context?.applicationContext
         if (applicationContext == null) {
-            Log.e(logTag, "Astrolabe Runtime 自动启动失败：无法获取 Application Context")
+            Log.e(logTag, "Astrolabe Runtime automatic startup failed: Application Context is unavailable")
             return false
         }
 
@@ -27,7 +27,7 @@ internal class AstrolabeRuntimeInitializer : ContentProvider() {
             is AstrolabeRuntimeStartResult.AlreadyRunning -> true
 
             is AstrolabeRuntimeStartResult.Failed -> {
-                Log.e(logTag, "Astrolabe Runtime 自动启动失败", result.error)
+                Log.e(logTag, "Astrolabe Runtime automatic startup failed", result.error)
                 false
             }
         }
