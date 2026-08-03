@@ -12,7 +12,8 @@ Release 构建。
 
 - Android API 23 或更高版本
 - 使用 Android View 构建的界面
-- Astrolabe Host 工具
+- 已安装 [Astrolabe Host](https://github.com/regulusleow/astrolabe/blob/main/README.zh-CN.md#安装)，
+  并为受支持的 AI 客户端完成配置
 
 当前暂不支持 Jetpack Compose 检查。
 

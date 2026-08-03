@@ -13,7 +13,8 @@ Current release: `2.0.1`.
 
 - Android API 23 or later
 - An Android View-based interface
-- Astrolabe Host tools
+- [Astrolabe Host](https://github.com/regulusleow/astrolabe#installation)
+  installed and configured for a supported AI client
 
 Jetpack Compose inspection is not supported yet.
 
