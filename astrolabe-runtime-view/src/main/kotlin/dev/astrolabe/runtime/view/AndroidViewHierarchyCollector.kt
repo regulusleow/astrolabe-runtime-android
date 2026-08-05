@@ -98,6 +98,7 @@ internal class AndroidViewHierarchyCollector(
             display = environment.display,
             viewport = environment.viewport,
             roots = roots,
+            relations = emptyList(),
             extensions = RuntimeExtensionMap(
                 mapOf(
                     "android.rootCoverage" to JsonPrimitive(rootSnapshot.coverage.wireValue),

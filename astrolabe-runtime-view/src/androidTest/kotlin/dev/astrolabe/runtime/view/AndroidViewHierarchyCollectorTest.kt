@@ -32,6 +32,23 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class AndroidViewHierarchyCollectorTest {
     @Test
+    fun collectorEmitsAnEmptyUIGraphRelationList() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync {
+            val context = instrumentation.targetContext
+            val payload = collector(
+                root = View(context),
+                configuration = AndroidHierarchyCaptureConfiguration()
+            ).capture(
+                environment = AndroidDisplayEnvironmentProvider(context).capture(),
+                cancellationToken = RuntimeCancellationToken { false }
+            )
+
+            assertEquals(0, payload.relations?.size)
+        }
+    }
+
+    @Test
     fun collectorRejectsTreesBeyondTheNodeBudget() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         instrumentation.runOnMainSync {
