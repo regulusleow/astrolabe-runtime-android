@@ -10,7 +10,8 @@ test("release metadata is consistent and Protocol uses the same major version", 
     readme,
     chineseReadme,
     changelog,
-    releaseGuide
+    releaseGuide,
+    ciWorkflow
   ] = await Promise.all([
     readFile("gradle.properties", "utf8"),
     readFile("gradle/libs.versions.toml", "utf8"),
@@ -18,7 +19,8 @@ test("release metadata is consistent and Protocol uses the same major version", 
     readFile("README.md", "utf8"),
     readFile("README.zh-CN.md", "utf8"),
     readFile("CHANGELOG.md", "utf8"),
-    readFile("docs/releasing.md", "utf8")
+    readFile("docs/releasing.md", "utf8"),
+    readFile(".github/workflows/ci.yml", "utf8")
   ]);
 
   const runtimeVersion = requiredCapture(
@@ -31,8 +33,23 @@ test("release metadata is consistent and Protocol uses the same major version", 
     /^astrolabe-protocol = "(\d+\.\d+\.\d+)"$/m,
     "Protocol version"
   );
+  const ciProtocolVersion = requiredCapture(
+    ciWorkflow,
+    /^  ASTROLABE_PROTOCOL_VERSION: "(\d+\.\d+\.\d+)"$/m,
+    "CI Protocol version"
+  );
 
   assert.equal(packageMetadata.version, runtimeVersion);
+  assert.equal(
+    ciProtocolVersion,
+    protocolVersion,
+    "CI and the version catalog must use the same Protocol version"
+  );
+  assert.equal(
+    ciWorkflow.split("ref: ${{ env.ASTROLABE_PROTOCOL_VERSION }}").length - 1,
+    2,
+    "Every CI Protocol checkout must use the shared version"
+  );
   assert.equal(
     semverMajor(protocolVersion),
     semverMajor(runtimeVersion),

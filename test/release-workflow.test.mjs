@@ -37,7 +37,14 @@ test("CI validates release tools and the final fused publication", async () => {
     workflow,
     /:AstrolabeProtocolKotlin:publishToMavenLocal/
   );
-  assert.match(workflow, /ref: 2\.0\.0/);
+  assert.match(
+    workflow,
+    /ASTROLABE_PROTOCOL_VERSION: "\d+\.\d+\.\d+"/
+  );
+  assert.match(
+    workflow,
+    /ref: \$\{\{ env\.ASTROLABE_PROTOCOL_VERSION \}\}/
+  );
   assert.doesNotMatch(workflow, /-PastrolabeVersion=/);
   assert.match(workflow, /astrolabeUseMavenLocal/);
   assert.match(

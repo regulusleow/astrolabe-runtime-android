@@ -1,6 +1,8 @@
 import groovy.json.JsonSlurper
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.RegularFileProperty
+import org.gradle.api.provider.Property
+import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputFile
 import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
@@ -14,6 +16,10 @@ import javax.xml.parsers.DocumentBuilderFactory
 
 @DisableCachingByDefault(because = "This task only validates generated publication artifacts")
 abstract class VerifyDistributionArtifactTask : DefaultTask() {
+    /** Expected public Astrolabe Protocol Kotlin version. */
+    @get:Input
+    abstract val protocolVersion: Property<String>
+
     /** Fused Android Runtime AAR to validate. */
     @get:InputFile
     @get:PathSensitive(PathSensitivity.RELATIVE)
@@ -125,8 +131,12 @@ abstract class VerifyDistributionArtifactTask : DefaultTask() {
     }
 
     private fun verifyDependencyCoordinates(dependencyCoordinates: List<String>) {
-        check(protocolCoordinate in dependencyCoordinates) {
-            "Runtime publication must depend on Astrolabe Protocol Kotlin 2.0.0"
+        val expectedProtocolVersion = protocolVersion.get()
+        val expectedProtocolCoordinate =
+            "$protocolGroup:$protocolArtifact:$expectedProtocolVersion"
+        check(expectedProtocolCoordinate in dependencyCoordinates) {
+            "Runtime publication must depend on Astrolabe Protocol Kotlin " +
+                expectedProtocolVersion
         }
         check(dependencyCoordinates.none(::isInternalCoordinate)) {
             "Runtime publication leaks internal or local project coordinates: " +
@@ -171,8 +181,8 @@ abstract class VerifyDistributionArtifactTask : DefaultTask() {
             "dev.astrolabe.runtime.AstrolabeRuntimeInitializer"
         const val publicationGroup = "io.github.regulusleow"
         const val publicationArtifact = "astrolabe-runtime-android"
-        const val protocolCoordinate =
-            "io.github.regulusleow:astrolabe-protocol-kotlin:2.0.0"
+        const val protocolGroup = "io.github.regulusleow"
+        const val protocolArtifact = "astrolabe-protocol-kotlin"
         const val constraintLayoutGroup = "androidx.constraintlayout"
 
         val internalArtifacts = setOf(
