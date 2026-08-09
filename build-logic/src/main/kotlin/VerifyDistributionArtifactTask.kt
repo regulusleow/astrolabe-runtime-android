@@ -132,6 +132,12 @@ abstract class VerifyDistributionArtifactTask : DefaultTask() {
             "Runtime publication leaks internal or local project coordinates: " +
                 dependencyCoordinates
         }
+        check(dependencyCoordinates.none { coordinate ->
+            coordinate.startsWith("$constraintLayoutGroup:")
+        }) {
+            "Runtime publication leaks optional ConstraintLayout dependencies: " +
+                dependencyCoordinates
+        }
     }
 
     private fun requireMap(value: Any?, context: String): Map<*, *> =
@@ -167,6 +173,7 @@ abstract class VerifyDistributionArtifactTask : DefaultTask() {
         const val publicationArtifact = "astrolabe-runtime-android"
         const val protocolCoordinate =
             "io.github.regulusleow:astrolabe-protocol-kotlin:2.0.0"
+        const val constraintLayoutGroup = "androidx.constraintlayout"
 
         val internalArtifacts = setOf(
             "astrolabe-runtime",

@@ -129,6 +129,24 @@ private class AndroidConstraintLayoutRelationProjector(
         val layoutParams = view.layoutParams as? ConstraintLayout.LayoutParams
             ?: return emptyList()
         return listOfNotNull(
+            percentDimensionRelation(
+                parent,
+                view,
+                "width",
+                layoutParams.width,
+                layoutParams.matchConstraintDefaultWidth,
+                layoutParams.matchConstraintPercentWidth,
+                density
+            ),
+            percentDimensionRelation(
+                parent,
+                view,
+                "height",
+                layoutParams.height,
+                layoutParams.matchConstraintDefaultHeight,
+                layoutParams.matchConstraintPercentHeight,
+                density
+            ),
             relation(parent, view, "start", "start", layoutParams.startToStart,
                 layoutParams.marginStart, layoutParams.goneStartMargin, 1.0, density),
             relation(parent, view, "start", "end", layoutParams.startToEnd,
@@ -160,6 +178,46 @@ private class AndroidConstraintLayoutRelationProjector(
             relation(parent, view, "baseline", "bottom", layoutParams.baselineToBottom,
                 layoutParams.baselineMargin, layoutParams.goneBaselineMargin, 1.0, density)
         )
+    }
+
+    private fun percentDimensionRelation(
+        parent: ConstraintLayout,
+        source: View,
+        anchor: String,
+        dimension: Int,
+        defaultMode: Int,
+        percent: Float,
+        density: Double
+    ): RuntimeLayoutRelation? {
+        val multiplier = percent.toDouble()
+        if (
+            dimension != ConstraintLayout.LayoutParams.MATCH_CONSTRAINT ||
+            defaultMode != ConstraintLayout.LayoutParams.MATCH_CONSTRAINT_PERCENT ||
+            !multiplier.isFinite() ||
+            multiplier !in 0.0..1.0
+        ) {
+            return null
+        }
+        return relationFactory.anchored(
+            source = source,
+            sourceAnchor = anchor,
+            target = parent,
+            targetAnchor = anchor,
+            multiplier = multiplier,
+            pixelOffset = -contentPadding(parent, anchor).toDouble() * multiplier,
+            density = density
+        )
+    }
+
+    private fun contentPadding(parent: ConstraintLayout, anchor: String): Int = when (anchor) {
+        "width" -> {
+            val logicalPadding = parent.paddingStart.coerceAtLeast(0) +
+                parent.paddingEnd.coerceAtLeast(0)
+            logicalPadding.takeIf { value -> value > 0 }
+                ?: parent.paddingLeft.coerceAtLeast(0) + parent.paddingRight.coerceAtLeast(0)
+        }
+        "height" -> parent.paddingTop.coerceAtLeast(0) + parent.paddingBottom.coerceAtLeast(0)
+        else -> 0
     }
 
     private fun relation(
@@ -237,6 +295,7 @@ private class AndroidViewLayoutRelationFactory(
         sourceAnchor: String,
         target: View,
         targetAnchor: String,
+        multiplier: Double = 1.0,
         pixelOffset: Double,
         density: Double
     ): RuntimeLayoutRelation = relation(
@@ -244,6 +303,7 @@ private class AndroidViewLayoutRelationFactory(
         sourceAnchor = sourceAnchor,
         target = target,
         targetAnchor = targetAnchor,
+        multiplier = multiplier,
         pixelOffset = pixelOffset,
         density = density
     )
@@ -253,6 +313,7 @@ private class AndroidViewLayoutRelationFactory(
         sourceAnchor: String,
         target: View?,
         targetAnchor: String?,
+        multiplier: Double = 1.0,
         pixelOffset: Double,
         density: Double
     ): RuntimeLayoutRelation {
@@ -269,7 +330,7 @@ private class AndroidViewLayoutRelationFactory(
                     anchor = checkNotNull(targetAnchor)
                 )
             },
-            multiplier = 1.0,
+            multiplier = multiplier,
             offset = RuntimeMeasurement(
                 value = pixelOffset / density,
                 unit = RuntimeMeasurementUnit.logical

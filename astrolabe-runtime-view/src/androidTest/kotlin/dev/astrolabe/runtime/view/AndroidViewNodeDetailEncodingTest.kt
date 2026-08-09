@@ -128,6 +128,132 @@ class AndroidViewNodeDetailEncodingTest {
     }
 
     @Test
+    fun constraintLayoutPercentDimensionsBecomeParentRelations() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync {
+            val nodeRegistry = RuntimeNodeRegistry<View>()
+            val parent = ConstraintLayout(instrumentation.targetContext).apply {
+                setPadding(10, 12, 14, 16)
+            }
+            val source = View(instrumentation.targetContext).apply {
+                id = View.generateViewId()
+            }
+            parent.addView(
+                source,
+                ConstraintLayout.LayoutParams(
+                    ConstraintLayout.LayoutParams.MATCH_CONSTRAINT,
+                    ConstraintLayout.LayoutParams.MATCH_CONSTRAINT
+                ).apply {
+                    matchConstraintDefaultWidth =
+                        ConstraintLayout.LayoutParams.MATCH_CONSTRAINT_PERCENT
+                    matchConstraintDefaultHeight =
+                        ConstraintLayout.LayoutParams.MATCH_CONSTRAINT_PERCENT
+                    matchConstraintPercentWidth = 0.4f
+                    matchConstraintPercentHeight = 0.25f
+                }
+            )
+            val sourceNodeID = nodeRegistry.nodeID(source)
+            val parentNodeID = nodeRegistry.nodeID(parent)
+
+            val relations = layoutRelations(
+                AndroidViewNodeDetailProvider(
+                    nodeRegistry = nodeRegistry,
+                    mainThreadExecutor = AndroidMainThreadExecutor()
+                ).nodeDetail(
+                    nodeID = sourceNodeID,
+                    cancellationToken = RuntimeCancellationToken { false }
+                )
+            )
+
+            assertEquals(listOf("width", "height"), relations.map { it.source.anchor })
+            assertTrue(relations.all { relation -> relation.source.nodeID == sourceNodeID })
+            assertEquals(listOf("width", "height"), relations.map { it.target?.anchor })
+            assertTrue(relations.all { relation -> relation.target?.nodeID == parentNodeID })
+            assertEquals(0.4, relations[0].multiplier, 0.0001)
+            assertEquals(0.25, relations[1].multiplier, 0.0001)
+            val density = source.resources.displayMetrics.density.toDouble()
+            assertEquals(-(10.0 + 14.0) * 0.4 / density, relations[0].offset.value, 0.0001)
+            assertEquals(-(12.0 + 16.0) * 0.25 / density, relations[1].offset.value, 0.0001)
+        }
+    }
+
+    @Test
+    fun constraintLayoutInvalidPercentDimensionsAreOmitted() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync {
+            val nodeRegistry = RuntimeNodeRegistry<View>()
+            val parent = ConstraintLayout(instrumentation.targetContext)
+            val source = View(instrumentation.targetContext).apply {
+                id = View.generateViewId()
+            }
+            parent.addView(
+                source,
+                ConstraintLayout.LayoutParams(
+                    ConstraintLayout.LayoutParams.MATCH_CONSTRAINT,
+                    ConstraintLayout.LayoutParams.MATCH_CONSTRAINT
+                ).apply {
+                    matchConstraintDefaultWidth =
+                        ConstraintLayout.LayoutParams.MATCH_CONSTRAINT_SPREAD
+                    matchConstraintDefaultHeight =
+                        ConstraintLayout.LayoutParams.MATCH_CONSTRAINT_PERCENT
+                    matchConstraintPercentWidth = 0.4f
+                    matchConstraintPercentHeight = Float.NaN
+                }
+            )
+
+            val relations = layoutRelations(
+                AndroidViewNodeDetailProvider(
+                    nodeRegistry = nodeRegistry,
+                    mainThreadExecutor = AndroidMainThreadExecutor()
+                ).nodeDetail(
+                    nodeID = nodeRegistry.nodeID(source),
+                    cancellationToken = RuntimeCancellationToken { false }
+                )
+            )
+
+            assertTrue(relations.isEmpty())
+        }
+    }
+
+    @Test
+    fun constraintLayoutOutOfRangePercentDimensionsAreOmitted() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync {
+            val nodeRegistry = RuntimeNodeRegistry<View>()
+            val parent = ConstraintLayout(instrumentation.targetContext)
+            val source = View(instrumentation.targetContext).apply {
+                id = View.generateViewId()
+            }
+            parent.addView(
+                source,
+                ConstraintLayout.LayoutParams(
+                    ConstraintLayout.LayoutParams.MATCH_CONSTRAINT,
+                    ConstraintLayout.LayoutParams.MATCH_CONSTRAINT
+                ).apply {
+                    matchConstraintDefaultWidth =
+                        ConstraintLayout.LayoutParams.MATCH_CONSTRAINT_PERCENT
+                    matchConstraintDefaultHeight =
+                        ConstraintLayout.LayoutParams.MATCH_CONSTRAINT_PERCENT
+                    matchConstraintPercentWidth = -0.1f
+                    matchConstraintPercentHeight = 1.1f
+                }
+            )
+
+            val relations = layoutRelations(
+                AndroidViewNodeDetailProvider(
+                    nodeRegistry = nodeRegistry,
+                    mainThreadExecutor = AndroidMainThreadExecutor()
+                ).nodeDetail(
+                    nodeID = nodeRegistry.nodeID(source),
+                    cancellationToken = RuntimeCancellationToken { false }
+                )
+            )
+
+            assertTrue(relations.isEmpty())
+        }
+    }
+
+    @Test
     fun constraintLayoutSiblingAnchorsBecomeLogicalRelations() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         instrumentation.runOnMainSync {
