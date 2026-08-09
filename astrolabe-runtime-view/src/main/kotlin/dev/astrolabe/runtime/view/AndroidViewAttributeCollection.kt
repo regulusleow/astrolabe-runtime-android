@@ -16,6 +16,7 @@ import dev.astrolabe.protocol.RuntimeAttributeSection
 import dev.astrolabe.protocol.RuntimeAttributeValue
 import dev.astrolabe.protocol.RuntimeColor
 import dev.astrolabe.protocol.RuntimeNamespacedIdentifier
+import dev.astrolabe.runtime.core.RuntimeNodeRegistry
 
 /** Collects one cohesive category of attributes from supported Android Views. */
 internal interface AndroidViewAttributeCollecting {
@@ -28,7 +29,8 @@ internal interface AndroidViewAttributeCollecting {
 
 /** Selects and combines independent View attribute collectors in stable order. */
 internal class AndroidViewAttributeCollectorRegistry(
-    private val collectors: List<AndroidViewAttributeCollecting> = defaultCollectors
+    nodeRegistry: RuntimeNodeRegistry<View> = RuntimeNodeRegistry(),
+    private val collectors: List<AndroidViewAttributeCollecting> = defaultCollectors(nodeRegistry)
 ) {
     init {
         require(collectors.map { collector -> collector.category }.distinct().size == collectors.size) {
@@ -55,8 +57,11 @@ internal class AndroidViewAttributeCollectorRegistry(
     }
 
     private companion object {
-        val defaultCollectors: List<AndroidViewAttributeCollecting> = listOf(
+        fun defaultCollectors(
+            nodeRegistry: RuntimeNodeRegistry<View>
+        ): List<AndroidViewAttributeCollecting> = listOf(
             AndroidCommonAttributeCollector(),
+            AndroidViewLayoutAttributeCollector(nodeRegistry),
             AndroidAccessibilityAttributeCollector(),
             AndroidTextAttributeCollector(),
             AndroidTextInputAttributeCollector(),
@@ -69,6 +74,7 @@ internal class AndroidViewAttributeCollectorRegistry(
 
 internal object AndroidViewDetailSchema {
     val commonCategory = RuntimeAttributeCategory("android.common")
+    val commonLayoutCategory = RuntimeAttributeCategory("common.layout")
     val accessibilityCategory = RuntimeAttributeCategory("android.accessibility")
     val textCategory = RuntimeAttributeCategory("android.text")
     val textInputCategory = RuntimeAttributeCategory("android.textInput")
