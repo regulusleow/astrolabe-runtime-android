@@ -91,20 +91,7 @@ public object AstrolabeRuntime {
                 targetIdentifier = targetIdentifier
             )
             viewInspectionComponent = inspectionComponent
-            val endpointConfiguration = RuntimeEndpointConfiguration(
-                runtimeIdentifier = RuntimeNamespacedIdentifier("astrolabe.runtime.android"),
-                runtimeVersion = BuildConfig.ASTROLABE_RUNTIME_VERSION,
-                runtimeInstanceIdentifier = instanceIdentifier,
-                platform = "android",
-                capabilities = setOf(
-                    RuntimeCapability.applicationInfo,
-                    RuntimeCapability.hierarchySnapshot,
-                    RuntimeCapability.nodeDetail,
-                    RuntimeCapability.attributePatchDiscovery,
-                    RuntimeCapability.attributePatching,
-                    RuntimeCapability.requestCancellation
-                )
-            )
+            val endpointConfiguration = androidRuntimeEndpointConfiguration(instanceIdentifier)
             val router = RuntimeRequestRouter(
                 RuntimeCoreRoutes.create(
                     configuration = endpointConfiguration,
@@ -176,6 +163,24 @@ public object AstrolabeRuntime {
         stopped
     }
 }
+
+internal fun androidRuntimeEndpointConfiguration(
+    instanceIdentifier: RuntimeOpaqueIdentifier
+): RuntimeEndpointConfiguration = RuntimeEndpointConfiguration(
+    runtimeIdentifier = RuntimeNamespacedIdentifier("astrolabe.runtime.android"),
+    runtimeVersion = BuildConfig.ASTROLABE_RUNTIME_VERSION,
+    runtimeInstanceIdentifier = instanceIdentifier,
+    platform = "android",
+    capabilities = setOf(
+        RuntimeCapability.applicationInfo,
+        RuntimeCapability.hierarchySnapshot,
+        RuntimeCapability.nodeDetail,
+        RuntimeCapability.attributePatchDiscovery,
+        RuntimeCapability.attributePatching,
+        RuntimeCapability.requestCancellation,
+        RuntimeCapability.uiGraphRelations
+    )
+)
 
 private data class ActiveRuntime(
     /** Abstract local socket name owned by this Runtime instance. */

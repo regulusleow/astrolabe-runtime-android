@@ -23,7 +23,7 @@ internal class AndroidViewNodeDetailProvider(
     private val nodeRegistry: RuntimeNodeRegistry<View>,
     private val mainThreadExecutor: AndroidMainThreadExecuting,
     private val collectorRegistry: AndroidViewAttributeCollectorRegistry =
-        AndroidViewAttributeCollectorRegistry()
+        AndroidViewAttributeCollectorRegistry(nodeRegistry)
 ) : RuntimeNodeDetailProvider {
     override fun nodeDetail(
         nodeID: RuntimeOpaqueIdentifier,

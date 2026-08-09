@@ -9,6 +9,9 @@ on:
 permissions:
   contents: read
 
+env:
+  ASTROLABE_PROTOCOL_VERSION: "2.1.0"
+
 jobs:
   build:
     runs-on: ubuntu-24.04
@@ -21,7 +24,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           repository: regulusleow/astrolabe-protocol
-          ref: 2.0.0
+          ref: ${{ env.ASTROLABE_PROTOCOL_VERSION }}
           path: astrolabe-protocol
       - uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5
         with:
@@ -65,7 +68,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           repository: regulusleow/astrolabe-protocol
-          ref: 2.0.0
+          ref: ${{ env.ASTROLABE_PROTOCOL_VERSION }}
           path: astrolabe-protocol
       - uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5
         with:

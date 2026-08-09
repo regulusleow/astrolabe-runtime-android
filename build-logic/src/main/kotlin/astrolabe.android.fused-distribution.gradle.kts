@@ -1,11 +1,21 @@
+import org.gradle.api.artifacts.VersionCatalogsExtension
+
 plugins {
     id("com.android.fused-library")
     id("com.vanniktech.maven.publish")
 }
 
+val protocolVersionFromCatalog = project.extensions
+    .getByType(VersionCatalogsExtension::class.java)
+    .named("libs")
+    .findVersion("astrolabe-protocol")
+    .get()
+    .requiredVersion
+
 tasks.register<VerifyDistributionArtifactTask>("verifyDistributionArtifact") {
     group = "verification"
     description = "Verifies the public fused AAR and Maven publication metadata."
+    protocolVersion.set(protocolVersionFromCatalog)
     dependsOn(
         "bundle",
         "generateMetadataFileForMavenPublication",

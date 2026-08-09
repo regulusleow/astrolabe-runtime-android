@@ -73,7 +73,7 @@ public class AndroidViewInspectionComponent private constructor(
             }
             val displayEnvironmentProvider = AndroidDisplayEnvironmentProvider(context)
             val nodeRegistry = RuntimeNodeRegistry<View>()
-            val attributeCollectorRegistry = AndroidViewAttributeCollectorRegistry()
+            val attributeCollectorRegistry = AndroidViewAttributeCollectorRegistry(nodeRegistry)
             val attributePatchProvider = RuntimeAttributePatchService(
                 AndroidViewAttributeMutator(
                     nodeRegistry = nodeRegistry,
