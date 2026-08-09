@@ -7,7 +7,7 @@ data to the Astrolabe Host during development. Applications integrate one
 debug-only dependency; the Runtime starts automatically and remains absent from
 Release builds.
 
-Current release: `2.0.1`.
+Current release: `2.1.0`.
 
 ## Requirements
 
@@ -26,7 +26,7 @@ debug variant:
 ```kotlin
 dependencies {
     debugImplementation(
-        "io.github.regulusleow:astrolabe-runtime-android:2.0.1"
+        "io.github.regulusleow:astrolabe-runtime-android:2.1.0"
     )
 }
 ```

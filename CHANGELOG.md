@@ -2,6 +2,17 @@
 
 All notable changes to Astrolabe Runtime for Android are documented here.
 
+## 2.1.0
+
+- Added contract-compliant UI graph relations to Android node-detail responses.
+- Added logical dimension relations for exact `ViewGroup.LayoutParams` sizes
+  while omitting semantic and weighted dimensions.
+- Added `ConstraintLayout` parent and sibling anchor relations with logical
+  margins, gone margins, and baseline semantics.
+- Added `ConstraintLayout` percentage dimension relations against the parent
+  content area.
+- Updated the Runtime dependency to Astrolabe Protocol Kotlin 2.1.0.
+
 ## 2.0.1
 
 - Lowered the published AAR compile SDK requirement from API 36.1 to API 35.
