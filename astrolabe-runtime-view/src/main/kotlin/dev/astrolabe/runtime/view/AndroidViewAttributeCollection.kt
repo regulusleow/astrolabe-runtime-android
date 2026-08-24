@@ -30,7 +30,11 @@ internal interface AndroidViewAttributeCollecting {
 /** Selects and combines independent View attribute collectors in stable order. */
 internal class AndroidViewAttributeCollectorRegistry(
     nodeRegistry: RuntimeNodeRegistry<View> = RuntimeNodeRegistry(),
-    private val collectors: List<AndroidViewAttributeCollecting> = defaultCollectors(nodeRegistry)
+    textPrivacyPolicy: AndroidViewTextPrivacyPolicy = AndroidViewTextPrivacyPolicy(),
+    private val collectors: List<AndroidViewAttributeCollecting> = defaultCollectors(
+        nodeRegistry,
+        textPrivacyPolicy
+    )
 ) {
     init {
         require(collectors.map { collector -> collector.category }.distinct().size == collectors.size) {
@@ -58,13 +62,15 @@ internal class AndroidViewAttributeCollectorRegistry(
 
     private companion object {
         fun defaultCollectors(
-            nodeRegistry: RuntimeNodeRegistry<View>
+            nodeRegistry: RuntimeNodeRegistry<View>,
+            textPrivacyPolicy: AndroidViewTextPrivacyPolicy
         ): List<AndroidViewAttributeCollecting> = listOf(
             AndroidCommonAttributeCollector(),
+            AndroidViewRenderAttributeCollector(),
             AndroidViewLayoutAttributeCollector(nodeRegistry),
             AndroidAccessibilityAttributeCollector(),
-            AndroidTextAttributeCollector(),
-            AndroidTextInputAttributeCollector(),
+            AndroidTextAttributeCollector(textPrivacyPolicy),
+            AndroidTextInputAttributeCollector(textPrivacyPolicy),
             AndroidImageAttributeCollector(),
             AndroidControlAttributeCollector(),
             AndroidScrollAttributeCollector()
@@ -74,6 +80,7 @@ internal class AndroidViewAttributeCollectorRegistry(
 
 internal object AndroidViewDetailSchema {
     val commonCategory = RuntimeAttributeCategory("android.common")
+    val renderCategory = RuntimeAttributeCategory("android.render")
     val commonLayoutCategory = RuntimeAttributeCategory("common.layout")
     val accessibilityCategory = RuntimeAttributeCategory("android.accessibility")
     val textCategory = RuntimeAttributeCategory("android.text")

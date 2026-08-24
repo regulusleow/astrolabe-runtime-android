@@ -31,8 +31,9 @@ import kotlinx.serialization.json.JsonPrimitive
 /** Maps semantic hierarchy facts without owning traversal or geometry. */
 internal class AndroidViewSemanticMapper(
     private val roleStrategies: List<AndroidViewRoleStrategy> = defaultRoleStrategies,
+    private val textPrivacyPolicy: AndroidViewTextPrivacyPolicy = AndroidViewTextPrivacyPolicy(),
     private val attributeCollectorRegistry: AndroidViewAttributeCollectorRegistry =
-        AndroidViewAttributeCollectorRegistry()
+        AndroidViewAttributeCollectorRegistry(textPrivacyPolicy = textPrivacyPolicy)
 ) {
     private val runtimeTypesByClass = mutableMapOf<Class<*>, RuntimeType>()
 
@@ -63,8 +64,7 @@ internal class AndroidViewSemanticMapper(
     }
 
     fun textPreview(view: View): String? = (view as? TextView)
-        ?.text
-        ?.toString()
+        ?.let(textPrivacyPolicy::exposedText)
         ?.takeCodePoints(MAXIMUM_TEXT_PREVIEW_CODE_POINTS)
 
     fun accessibility(view: View): RuntimeAccessibility? {
@@ -73,7 +73,7 @@ internal class AndroidViewSemanticMapper(
         val textView = view as? TextView
         val value = when (view) {
             is CompoundButton -> view.isChecked.toString()
-            else -> textView?.text?.toString()?.takeIf(String::isNotEmpty)
+            else -> textView?.let(textPrivacyPolicy::exposedText)
         }
         val hint = textView?.hint?.toString()?.takeIf(String::isNotEmpty)
             ?: tooltip(view)

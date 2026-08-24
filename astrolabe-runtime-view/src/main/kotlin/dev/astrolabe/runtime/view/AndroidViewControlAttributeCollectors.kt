@@ -26,7 +26,9 @@ import dev.astrolabe.protocol.RuntimeMeasuredSize
 import dev.astrolabe.protocol.RuntimeMeasurement
 import dev.astrolabe.protocol.RuntimeMeasurementUnit
 
-internal class AndroidTextAttributeCollector : AndroidViewAttributeCollecting {
+internal class AndroidTextAttributeCollector(
+    private val textPrivacyPolicy: AndroidViewTextPrivacyPolicy
+) : AndroidViewAttributeCollecting {
     override val category: RuntimeAttributeCategory = AndroidViewDetailSchema.textCategory
 
     override fun supports(view: View): Boolean = view is TextView
@@ -34,7 +36,7 @@ internal class AndroidTextAttributeCollector : AndroidViewAttributeCollecting {
     override fun attributes(view: View): List<RuntimeAttribute> {
         val textView = view as? TextView ?: return emptyList()
         return buildList {
-            nonempty(textView.text)?.let { value ->
+            textPrivacyPolicy.exposedText(textView)?.let { value ->
                 add(stringValue("android.text.text", value))
             }
             nonempty(textView.hint)?.let { value ->
@@ -97,21 +99,27 @@ internal fun scaledLogicalTextSize(textView: TextView): Double {
     return textView.textSize.toDouble() / scaledDensity
 }
 
-internal class AndroidTextInputAttributeCollector : AndroidViewAttributeCollecting {
+internal class AndroidTextInputAttributeCollector(
+    private val textPrivacyPolicy: AndroidViewTextPrivacyPolicy
+) : AndroidViewAttributeCollecting {
     override val category: RuntimeAttributeCategory = AndroidViewDetailSchema.textInputCategory
 
     override fun supports(view: View): Boolean = view is EditText
 
     override fun attributes(view: View): List<RuntimeAttribute> {
         val input = view as? EditText ?: return emptyList()
-        return listOf(
-            integerValue("android.textInput.inputType", input.inputType.toLong()),
-            integerValue("android.textInput.imeOptions", input.imeOptions.toLong()),
-            booleanValue("android.textInput.singleLine", input.maxLines == 1),
-            booleanValue("android.textInput.cursorVisible", input.isCursorVisible),
-            integerValue("android.textInput.selectionStart", input.selectionStart.toLong()),
-            integerValue("android.textInput.selectionEnd", input.selectionEnd.toLong())
-        )
+        val isSensitive = textPrivacyPolicy.isSensitive(input)
+        return buildList {
+            add(integerValue("android.textInput.inputType", input.inputType.toLong()))
+            add(integerValue("android.textInput.imeOptions", input.imeOptions.toLong()))
+            add(booleanValue("android.textInput.secure", isSensitive))
+            add(booleanValue("android.textInput.singleLine", input.maxLines == 1))
+            add(booleanValue("android.textInput.cursorVisible", input.isCursorVisible))
+            if (!isSensitive) {
+                add(integerValue("android.textInput.selectionStart", input.selectionStart.toLong()))
+                add(integerValue("android.textInput.selectionEnd", input.selectionEnd.toLong()))
+            }
+        }
     }
 }
 

@@ -39,7 +39,8 @@ internal interface AndroidViewAttributeMutationStrategy {
 internal class AndroidViewAttributeMutator(
     private val nodeRegistry: RuntimeNodeRegistry<View>,
     private val mainThreadExecutor: AndroidMainThreadExecuting,
-    strategies: List<AndroidViewAttributeMutationStrategy> = defaultStrategies
+    textPrivacyPolicy: AndroidViewTextPrivacyPolicy = AndroidViewTextPrivacyPolicy(),
+    strategies: List<AndroidViewAttributeMutationStrategy> = defaultStrategies(textPrivacyPolicy)
 ) : RuntimeAttributeMutating {
     private val strategiesByIdentifier = strategies.associateBy { strategy ->
         RuntimeAttributeIdentifier(strategy.patchableAttribute.attributePattern)
@@ -119,8 +120,10 @@ internal class AndroidViewAttributeMutator(
     )
 
     private companion object {
-        val defaultStrategies: List<AndroidViewAttributeMutationStrategy> = listOf(
-            AndroidTextMutationStrategy(),
+        fun defaultStrategies(
+            textPrivacyPolicy: AndroidViewTextPrivacyPolicy
+        ): List<AndroidViewAttributeMutationStrategy> = listOf(
+            AndroidTextMutationStrategy(textPrivacyPolicy),
             AndroidFontSizeMutationStrategy(),
             AndroidTextColorMutationStrategy(),
             AndroidAlphaMutationStrategy(),
