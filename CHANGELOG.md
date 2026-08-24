@@ -2,6 +2,17 @@
 
 All notable changes to Astrolabe Runtime for Android are documented here.
 
+## 2.2.0
+
+- Added bounded render semantics for backgrounds, foregrounds, tint colors,
+  elevation, clipping, outlines, and supported drawable types.
+- Added `GradientDrawable` shape, fill, gradient, and per-corner radius
+  inspection while respecting platform API availability.
+- Added `ConstraintLayout` match-constraint minimum, maximum, and dimension
+  ratio relations.
+- Added fail-closed password privacy across text inspection, semantic previews,
+  node details, and temporary text mutations.
+
 ## 2.1.0
 
 - Added contract-compliant UI graph relations to Android node-detail responses.
