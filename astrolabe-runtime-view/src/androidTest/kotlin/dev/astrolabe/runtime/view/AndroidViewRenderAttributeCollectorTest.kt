@@ -14,6 +14,7 @@ import android.graphics.Rect
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.InsetDrawable
+import android.os.Build
 import android.view.View
 import android.view.ViewOutlineProvider
 import android.widget.FrameLayout
@@ -29,6 +30,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -113,6 +115,7 @@ class AndroidViewRenderAttributeCollectorTest {
 
     @Test
     fun gradientDrawableExposesShapeColorsAndOrientation() {
+        assumeTrue(Build.VERSION.SDK_INT >= Build.VERSION_CODES.N)
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         instrumentation.runOnMainSync {
             val drawable = GradientDrawable(
@@ -145,6 +148,7 @@ class AndroidViewRenderAttributeCollectorTest {
 
     @Test
     fun radialGradientOmitsNonFiniteCenterAndLinearOrientation() {
+        assumeTrue(Build.VERSION.SDK_INT >= Build.VERSION_CODES.N)
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         instrumentation.runOnMainSync {
             val drawable = GradientDrawable(
@@ -175,6 +179,7 @@ class AndroidViewRenderAttributeCollectorTest {
 
     @Test
     fun gradientDrawableExposesEllipticalCornerRadii() {
+        assumeTrue(Build.VERSION.SDK_INT >= Build.VERSION_CODES.N)
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         instrumentation.runOnMainSync {
             val drawable = GradientDrawable().apply {
@@ -190,6 +195,51 @@ class AndroidViewRenderAttributeCollectorTest {
             assertCornerSize(payload, "topRight", 4.0 / density, 5.0 / density)
             assertCornerSize(payload, "bottomRight", 6.0 / density, 7.0 / density)
             assertCornerSize(payload, "bottomLeft", 8.0 / density, 9.0 / density)
+        }
+    }
+
+    @Test
+    fun gradientDrawableWithoutExplicitCornersFallsBackToUniformRadius() {
+        assumeTrue(Build.VERSION.SDK_INT >= Build.VERSION_CODES.N)
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync {
+            val view = View(instrumentation.targetContext).apply {
+                background = GradientDrawable()
+            }
+            val payload = nodeDetail(view)
+
+            assertEquals("rectangle", payload.string("android.render.background.shape"))
+            assertEquals(
+                0.0,
+                payload.measurement("android.render.background.cornerRadius"),
+                0.0001
+            )
+        }
+    }
+
+    @Test
+    fun gradientDrawableDetailedFactsAreOmittedBeforeApi24() {
+        assumeTrue(Build.VERSION.SDK_INT < Build.VERSION_CODES.N)
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync {
+            val view = View(instrumentation.targetContext).apply {
+                background = GradientDrawable(
+                    GradientDrawable.Orientation.LEFT_RIGHT,
+                    intArrayOf(Color.RED, Color.BLUE)
+                ).apply {
+                    cornerRadius = 12f
+                }
+            }
+            val payload = nodeDetail(view)
+
+            assertEquals(
+                GradientDrawable::class.java.name,
+                payload.string("android.render.background.type")
+            )
+            assertNull(payload.attribute("android.render.background.shape"))
+            assertNull(payload.attribute("android.render.background.color"))
+            assertNull(payload.attribute("android.render.background.cornerRadius"))
+            assertNull(payload.attribute("android.render.background.gradient.colors"))
         }
     }
 
@@ -210,6 +260,11 @@ class AndroidViewRenderAttributeCollectorTest {
 
             assertFalse(payload.boolean("android.render.outline.empty"))
             assertTrue(payload.boolean("android.render.outline.canClip"))
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
+                assertNull(payload.attribute("android.render.outline.bounds"))
+                assertNull(payload.attribute("android.render.outline.cornerRadius"))
+                return@runOnMainSync
+            }
             val bounds = (payload.attribute("android.render.outline.bounds") as
                 RuntimeAttributeValue.Rect).value
             assertEquals(80.0 / density, bounds.width, 0.0001)

@@ -233,7 +233,7 @@ private class AndroidGradientDrawableAttributeProjector : AndroidDrawableAttribu
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
             return
         }
-        val cornerRadii = gradient.cornerRadii
+        val cornerRadii = runCatching { gradient.cornerRadii }.getOrNull()
         if (cornerRadii != null &&
             cornerRadii.size == CORNER_RADII_VALUE_COUNT &&
             cornerRadii.all { radius -> radius.isFinite() && radius >= 0f }
