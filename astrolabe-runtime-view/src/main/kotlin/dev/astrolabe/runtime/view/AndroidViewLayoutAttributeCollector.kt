@@ -147,6 +147,39 @@ private class AndroidConstraintLayoutRelationProjector(
                 layoutParams.matchConstraintPercentHeight,
                 density
             ),
+            matchConstraintBoundRelation(
+                view,
+                "width",
+                layoutParams.width,
+                layoutParams.matchConstraintMinWidth,
+                RuntimeLayoutRelationKind.greaterThanOrEqual,
+                density
+            ),
+            matchConstraintBoundRelation(
+                view,
+                "width",
+                layoutParams.width,
+                layoutParams.matchConstraintMaxWidth,
+                RuntimeLayoutRelationKind.lessThanOrEqual,
+                density
+            ),
+            matchConstraintBoundRelation(
+                view,
+                "height",
+                layoutParams.height,
+                layoutParams.matchConstraintMinHeight,
+                RuntimeLayoutRelationKind.greaterThanOrEqual,
+                density
+            ),
+            matchConstraintBoundRelation(
+                view,
+                "height",
+                layoutParams.height,
+                layoutParams.matchConstraintMaxHeight,
+                RuntimeLayoutRelationKind.lessThanOrEqual,
+                density
+            ),
+            dimensionRatioRelation(view, layoutParams, density),
             relation(parent, view, "start", "start", layoutParams.startToStart,
                 layoutParams.marginStart, layoutParams.goneStartMargin, 1.0, density),
             relation(parent, view, "start", "end", layoutParams.startToEnd,
@@ -178,6 +211,93 @@ private class AndroidConstraintLayoutRelationProjector(
             relation(parent, view, "baseline", "bottom", layoutParams.baselineToBottom,
                 layoutParams.baselineMargin, layoutParams.goneBaselineMargin, 1.0, density)
         )
+    }
+
+    private fun matchConstraintBoundRelation(
+        source: View,
+        anchor: String,
+        dimension: Int,
+        pixelBound: Int,
+        relation: RuntimeLayoutRelationKind,
+        density: Double
+    ): RuntimeLayoutRelation? {
+        if (
+            dimension != ConstraintLayout.LayoutParams.MATCH_CONSTRAINT ||
+            pixelBound <= 0
+        ) {
+            return null
+        }
+        return relationFactory.constant(
+            source = source,
+            sourceAnchor = anchor,
+            pixelOffset = pixelBound,
+            density = density,
+            relationKind = relation
+        )
+    }
+
+    private fun dimensionRatioRelation(
+        source: View,
+        layoutParams: ConstraintLayout.LayoutParams,
+        density: Double
+    ): RuntimeLayoutRelation? {
+        val rawRatio = layoutParams.dimensionRatio?.trim().orEmpty()
+        val parts = rawRatio.split(',', limit = 2)
+        if (parts.size != 2) {
+            return null
+        }
+        val side = parts[0].trim().uppercase()
+        val ratio = dimensionRatioMultiplier(side, parts[1].trim()) ?: return null
+        val sourceAnchor: String
+        val targetAnchor: String
+        when (side) {
+            "W" -> {
+                if (layoutParams.width != ConstraintLayout.LayoutParams.MATCH_CONSTRAINT) {
+                    return null
+                }
+                sourceAnchor = "width"
+                targetAnchor = "height"
+            }
+            "H" -> {
+                if (layoutParams.height != ConstraintLayout.LayoutParams.MATCH_CONSTRAINT) {
+                    return null
+                }
+                sourceAnchor = "height"
+                targetAnchor = "width"
+            }
+            else -> return null
+        }
+        return relationFactory.anchored(
+            source = source,
+            sourceAnchor = sourceAnchor,
+            target = source,
+            targetAnchor = targetAnchor,
+            multiplier = ratio,
+            pixelOffset = 0.0,
+            density = density
+        )
+    }
+
+    private fun dimensionRatioMultiplier(side: String, value: String): Double? {
+        val colonParts = value.split(':', limit = 2)
+        val ratio = if (colonParts.size == 2) {
+            val numerator = colonParts[0].toDoubleOrNull()
+            val denominator = colonParts[1].toDoubleOrNull()
+            if (
+                numerator == null ||
+                denominator == null ||
+                !numerator.isFinite() ||
+                !denominator.isFinite() ||
+                numerator <= 0.0 ||
+                denominator <= 0.0
+            ) {
+                return null
+            }
+            if (side == "H") denominator / numerator else numerator / denominator
+        } else {
+            value.toDoubleOrNull() ?: return null
+        }
+        return ratio.takeIf { candidate -> candidate.isFinite() && candidate > 0.0 }
     }
 
     private fun percentDimensionRelation(
@@ -275,7 +395,8 @@ private class AndroidViewLayoutRelationFactory(
         source: View,
         sourceAnchor: String,
         pixelOffset: Int?,
-        density: Double
+        density: Double,
+        relationKind: RuntimeLayoutRelationKind = RuntimeLayoutRelationKind.equal
     ): RuntimeLayoutRelation? {
         if (pixelOffset == null) {
             return null
@@ -286,7 +407,8 @@ private class AndroidViewLayoutRelationFactory(
             target = null,
             targetAnchor = null,
             pixelOffset = pixelOffset.toDouble(),
-            density = density
+            density = density,
+            relationKind = relationKind
         )
     }
 
@@ -297,7 +419,8 @@ private class AndroidViewLayoutRelationFactory(
         targetAnchor: String,
         multiplier: Double = 1.0,
         pixelOffset: Double,
-        density: Double
+        density: Double,
+        relationKind: RuntimeLayoutRelationKind = RuntimeLayoutRelationKind.equal
     ): RuntimeLayoutRelation = relation(
         source = source,
         sourceAnchor = sourceAnchor,
@@ -305,7 +428,8 @@ private class AndroidViewLayoutRelationFactory(
         targetAnchor = targetAnchor,
         multiplier = multiplier,
         pixelOffset = pixelOffset,
-        density = density
+        density = density,
+        relationKind = relationKind
     )
 
     private fun relation(
@@ -315,7 +439,8 @@ private class AndroidViewLayoutRelationFactory(
         targetAnchor: String?,
         multiplier: Double = 1.0,
         pixelOffset: Double,
-        density: Double
+        density: Double,
+        relationKind: RuntimeLayoutRelationKind = RuntimeLayoutRelationKind.equal
     ): RuntimeLayoutRelation {
         return RuntimeLayoutRelation(
             identifier = null,
@@ -323,7 +448,7 @@ private class AndroidViewLayoutRelationFactory(
                 nodeID = nodeRegistry.nodeID(source),
                 anchor = sourceAnchor
             ),
-            relation = RuntimeLayoutRelationKind.equal,
+            relation = relationKind,
             target = target?.let { targetView ->
                 RuntimeLayoutAnchor(
                     nodeID = nodeRegistry.nodeID(targetView),

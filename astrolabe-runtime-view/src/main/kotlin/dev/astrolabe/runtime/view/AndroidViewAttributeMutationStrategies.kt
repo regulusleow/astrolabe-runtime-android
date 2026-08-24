@@ -24,13 +24,16 @@ import dev.astrolabe.runtime.core.RuntimeProviderFailure
 import java.lang.ref.WeakReference
 import kotlin.math.roundToInt
 
-internal class AndroidTextMutationStrategy : AndroidViewAttributeMutationStrategy {
+internal class AndroidTextMutationStrategy(
+    private val textPrivacyPolicy: AndroidViewTextPrivacyPolicy
+) : AndroidViewAttributeMutationStrategy {
     override val patchableAttribute: RuntimePatchableAttribute =
         AndroidViewPatchCatalog.stringAttribute(AndroidViewPatchCatalog.text, listOf("text"))
     override val domainIdentifier: String = TEXT_PRESENTATION_DOMAIN
     override val effectIdentifiers: Set<String> = setOf(AndroidViewPatchCatalog.text.rawValue)
 
-    override fun supports(view: View): Boolean = view is TextView
+    override fun supports(view: View): Boolean = view is TextView &&
+        !textPrivacyPolicy.isSensitive(view)
 
     override fun apply(view: View, value: RuntimeAttributeValue): RuntimeAttributeMutation {
         val textView = view as? TextView ?: throw unsupported(AndroidViewPatchCatalog.text)

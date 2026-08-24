@@ -7,8 +7,11 @@
 
 package dev.astrolabe.runtime.view
 
+import android.text.InputType
+import android.text.method.PasswordTransformationMethod
 import android.view.View
 import android.view.ViewGroup
+import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.Switch
 import androidx.constraintlayout.widget.ConstraintLayout
@@ -23,12 +26,98 @@ import dev.astrolabe.protocol.RuntimeNodeDetailPayload
 import dev.astrolabe.runtime.core.RuntimeCancellationToken
 import dev.astrolabe.runtime.core.RuntimeNodeRegistry
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class AndroidViewNodeDetailEncodingTest {
+    @Test
+    fun passwordInputVariationsAreRedactedAndMarkedSecure() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync {
+            val inputTypes = listOf(
+                InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD,
+                InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD,
+                InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD,
+                InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
+            )
+
+            inputTypes.forEach { inputType ->
+                val input = EditText(instrumentation.targetContext).apply {
+                    this.inputType = inputType
+                    setText("private-password")
+                    setSelection(text.length)
+                }
+                val payload = nodeDetail(input)
+
+                assertNull(payload.attribute("android.text.text"))
+                assertNull(payload.attribute("android.textInput.selectionStart"))
+                assertNull(payload.attribute("android.textInput.selectionEnd"))
+                assertEquals(
+                    true,
+                    (payload.attribute("android.textInput.secure") as?
+                        RuntimeAttributeValue.BooleanValue)?.value
+                )
+            }
+        }
+    }
+
+    @Test
+    fun passwordTransformationMethodMarksInputSecure() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync {
+            val input = EditText(instrumentation.targetContext).apply {
+                inputType = InputType.TYPE_CLASS_TEXT
+                transformationMethod = PasswordTransformationMethod.getInstance()
+                setText("private-password")
+            }
+            val payload = nodeDetail(input)
+
+            assertNull(payload.attribute("android.text.text"))
+            assertEquals(
+                true,
+                (payload.attribute("android.textInput.secure") as?
+                    RuntimeAttributeValue.BooleanValue)?.value
+            )
+        }
+    }
+
+    @Test
+    fun ordinaryTextInputRemainsVisibleAndIsMarkedNonSecure() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync {
+            val input = EditText(instrumentation.targetContext).apply {
+                inputType = InputType.TYPE_CLASS_TEXT
+                setText("visible-text")
+                setSelection(2, 6)
+            }
+            val payload = nodeDetail(input)
+
+            assertEquals(
+                "visible-text",
+                (payload.attribute("android.text.text") as?
+                    RuntimeAttributeValue.StringValue)?.value
+            )
+            assertFalse(
+                (payload.attribute("android.textInput.secure") as
+                    RuntimeAttributeValue.BooleanValue).value
+            )
+            assertEquals(
+                2L,
+                (payload.attribute("android.textInput.selectionStart") as
+                    RuntimeAttributeValue.Integer).value
+            )
+            assertEquals(
+                6L,
+                (payload.attribute("android.textInput.selectionEnd") as
+                    RuntimeAttributeValue.Integer).value
+            )
+        }
+    }
+
     @Test
     fun exactLayoutParamsBecomeLogicalConstantRelations() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
@@ -174,6 +263,133 @@ class AndroidViewNodeDetailEncodingTest {
             val density = source.resources.displayMetrics.density.toDouble()
             assertEquals(-(10.0 + 14.0) * 0.4 / density, relations[0].offset.value, 0.0001)
             assertEquals(-(12.0 + 16.0) * 0.25 / density, relations[1].offset.value, 0.0001)
+        }
+    }
+
+    @Test
+    fun constraintLayoutExplicitDimensionRatiosBecomeSameNodeRelations() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync {
+            val cases = listOf(
+                Triple("W,16:9", "width" to "height", 16.0 / 9.0),
+                Triple("H,16:9", "height" to "width", 9.0 / 16.0)
+            )
+
+            cases.forEach { (ratio, anchors, multiplier) ->
+                val nodeRegistry = RuntimeNodeRegistry<View>()
+                val parent = ConstraintLayout(instrumentation.targetContext)
+                val source = View(instrumentation.targetContext).apply {
+                    id = View.generateViewId()
+                }
+                parent.addView(
+                    source,
+                    ConstraintLayout.LayoutParams(
+                        ConstraintLayout.LayoutParams.MATCH_CONSTRAINT,
+                        ConstraintLayout.LayoutParams.MATCH_CONSTRAINT
+                    ).apply {
+                        dimensionRatio = ratio
+                    }
+                )
+                val sourceNodeID = nodeRegistry.nodeID(source)
+
+                val relation = layoutRelations(
+                    AndroidViewNodeDetailProvider(
+                        nodeRegistry = nodeRegistry,
+                        mainThreadExecutor = AndroidMainThreadExecutor()
+                    ).nodeDetail(
+                        nodeID = sourceNodeID,
+                        cancellationToken = RuntimeCancellationToken { false }
+                    )
+                ).single()
+
+                assertEquals(anchors.first, relation.source.anchor)
+                assertEquals(sourceNodeID, relation.source.nodeID)
+                assertEquals(anchors.second, relation.target?.anchor)
+                assertEquals(sourceNodeID, relation.target?.nodeID)
+                assertEquals(multiplier, relation.multiplier, 0.0001)
+                assertEquals(0.0, relation.offset.value, 0.0001)
+                assertEquals(RuntimeLayoutRelationKind.equal, relation.relation)
+            }
+        }
+    }
+
+    @Test
+    fun constraintLayoutMatchConstraintBoundsBecomeInequalityRelations() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync {
+            val nodeRegistry = RuntimeNodeRegistry<View>()
+            val parent = ConstraintLayout(instrumentation.targetContext)
+            val source = View(instrumentation.targetContext).apply {
+                id = View.generateViewId()
+            }
+            parent.addView(
+                source,
+                ConstraintLayout.LayoutParams(
+                    ConstraintLayout.LayoutParams.MATCH_CONSTRAINT,
+                    ConstraintLayout.LayoutParams.MATCH_CONSTRAINT
+                ).apply {
+                    matchConstraintMinWidth = 20
+                    matchConstraintMaxWidth = 80
+                    matchConstraintMinHeight = 10
+                    matchConstraintMaxHeight = 60
+                }
+            )
+
+            val relations = layoutRelations(
+                AndroidViewNodeDetailProvider(
+                    nodeRegistry = nodeRegistry,
+                    mainThreadExecutor = AndroidMainThreadExecutor()
+                ).nodeDetail(
+                    nodeID = nodeRegistry.nodeID(source),
+                    cancellationToken = RuntimeCancellationToken { false }
+                )
+            )
+            val density = source.resources.displayMetrics.density.toDouble()
+
+            assertEquals(
+                listOf("width", "width", "height", "height"),
+                relations.map { relation -> relation.source.anchor }
+            )
+            assertEquals(
+                listOf(
+                    RuntimeLayoutRelationKind.greaterThanOrEqual,
+                    RuntimeLayoutRelationKind.lessThanOrEqual,
+                    RuntimeLayoutRelationKind.greaterThanOrEqual,
+                    RuntimeLayoutRelationKind.lessThanOrEqual
+                ),
+                relations.map { relation -> relation.relation }
+            )
+            assertTrue(relations.all { relation -> relation.target == null })
+            assertEquals(
+                listOf(20.0, 80.0, 10.0, 60.0).map { value -> value / density },
+                relations.map { relation -> relation.offset.value }
+            )
+        }
+    }
+
+    @Test
+    fun ambiguousOrInvalidDimensionRatiosAreOmitted() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync {
+            val ratios = listOf("16:9", "W,0:9", "H,16:0", "W,invalid")
+
+            ratios.forEach { ratio ->
+                val parent = ConstraintLayout(instrumentation.targetContext)
+                val source = View(instrumentation.targetContext).apply {
+                    id = View.generateViewId()
+                }
+                parent.addView(
+                    source,
+                    ConstraintLayout.LayoutParams(
+                        ConstraintLayout.LayoutParams.MATCH_CONSTRAINT,
+                        ConstraintLayout.LayoutParams.MATCH_CONSTRAINT
+                    ).apply {
+                        dimensionRatio = ratio
+                    }
+                )
+
+                assertTrue(layoutRelations(nodeDetail(source)).isEmpty())
+            }
         }
     }
 
@@ -496,4 +712,21 @@ class AndroidViewNodeDetailEncodingTest {
             }
         return (attribute.value as RuntimeAttributeValue.LayoutRelations).value
     }
+
+    private fun nodeDetail(view: View): RuntimeNodeDetailPayload {
+        val nodeRegistry = RuntimeNodeRegistry<View>()
+        return AndroidViewNodeDetailProvider(
+            nodeRegistry = nodeRegistry,
+            mainThreadExecutor = AndroidMainThreadExecutor()
+        ).nodeDetail(
+            nodeID = nodeRegistry.nodeID(view),
+            cancellationToken = RuntimeCancellationToken { false }
+        )
+    }
+
+    private fun RuntimeNodeDetailPayload.attribute(identifier: String): RuntimeAttributeValue? =
+        sections
+            .flatMap { section -> section.attributes }
+            .firstOrNull { attribute -> attribute.identifier.rawValue == identifier }
+            ?.value
 }

@@ -73,11 +73,16 @@ public class AndroidViewInspectionComponent private constructor(
             }
             val displayEnvironmentProvider = AndroidDisplayEnvironmentProvider(context)
             val nodeRegistry = RuntimeNodeRegistry<View>()
-            val attributeCollectorRegistry = AndroidViewAttributeCollectorRegistry(nodeRegistry)
+            val textPrivacyPolicy = AndroidViewTextPrivacyPolicy()
+            val attributeCollectorRegistry = AndroidViewAttributeCollectorRegistry(
+                nodeRegistry = nodeRegistry,
+                textPrivacyPolicy = textPrivacyPolicy
+            )
             val attributePatchProvider = RuntimeAttributePatchService(
                 AndroidViewAttributeMutator(
                     nodeRegistry = nodeRegistry,
-                    mainThreadExecutor = mainThreadExecutor
+                    mainThreadExecutor = mainThreadExecutor,
+                    textPrivacyPolicy = textPrivacyPolicy
                 )
             )
             val collector = AndroidViewHierarchyCollector(
@@ -85,6 +90,7 @@ public class AndroidViewInspectionComponent private constructor(
                 nodeRegistry = nodeRegistry,
                 rootProvider = rootProvider,
                 semanticMapper = AndroidViewSemanticMapper(
+                    textPrivacyPolicy = textPrivacyPolicy,
                     attributeCollectorRegistry = attributeCollectorRegistry
                 )
             )
