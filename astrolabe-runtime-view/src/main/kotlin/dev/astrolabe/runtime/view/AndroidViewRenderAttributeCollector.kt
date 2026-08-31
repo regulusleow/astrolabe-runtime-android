@@ -13,6 +13,10 @@ import android.graphics.Rect
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.InsetDrawable
+import android.graphics.drawable.LayerDrawable
+import android.graphics.drawable.RippleDrawable
+import android.graphics.drawable.StateListDrawable
 import android.os.Build
 import android.view.View
 import android.view.ViewGroup
@@ -24,6 +28,7 @@ import dev.astrolabe.protocol.RuntimeCoordinateSpace
 import dev.astrolabe.protocol.RuntimeMeasuredSize
 import dev.astrolabe.protocol.RuntimeMeasurement
 import dev.astrolabe.protocol.RuntimeMeasurementUnit
+import java.util.IdentityHashMap
 import java.util.Locale
 
 /** Collects Android-native rendering facts without changing drawable or View state. */
@@ -119,6 +124,10 @@ internal class AndroidViewRenderAttributeCollector(
 /** Selects one bounded projector for the resolved Drawable type. */
 internal class AndroidDrawableAttributeProjectorRegistry(
     private val projectors: List<AndroidDrawableAttributeProjecting> = listOf(
+        AndroidStateListDrawableAttributeProjector(),
+        AndroidInsetDrawableAttributeProjector(),
+        AndroidRippleDrawableAttributeProjector(),
+        AndroidLayerDrawableAttributeProjector(),
         AndroidColorDrawableAttributeProjector(),
         AndroidGradientDrawableAttributeProjector()
     )
@@ -128,101 +137,410 @@ internal class AndroidDrawableAttributeProjectorRegistry(
         prefix: String,
         density: Double,
         drawableState: IntArray
-    ): List<RuntimeAttribute> = projectors
-        .firstOrNull { projector -> projector.supports(drawable) }
-        ?.attributes(drawable, prefix, density, drawableState)
-        .orEmpty()
+    ): List<RuntimeAttribute> = AndroidDrawableProjectionSession(
+        projectors = projectors,
+        density = density,
+        drawableState = drawableState
+    ).attributes(drawable, prefix)
 }
 
 /** Projects one supported Drawable type into bounded runtime attributes. */
 internal interface AndroidDrawableAttributeProjecting {
     fun supports(drawable: Drawable): Boolean
 
-    fun attributes(
+    fun projection(
         drawable: Drawable,
         prefix: String,
         density: Double,
         drawableState: IntArray
-    ): List<RuntimeAttribute>
+    ): AndroidDrawableProjection
+}
+
+/** One-level projection returned by a Drawable projector. */
+internal data class AndroidDrawableProjection(
+    /** Attributes read directly from this Drawable. */
+    val attributes: List<RuntimeAttribute>,
+    /** Current child Drawables eligible for bounded recursive projection. */
+    val children: List<AndroidDrawableProjectionChild> = emptyList()
+)
+
+/** One current child Drawable and the attribute prefix assigned to it. */
+internal data class AndroidDrawableProjectionChild(
+    /** Child Drawable participating in the current rendered state. */
+    val drawable: Drawable,
+    /** Attribute prefix under which the child's facts are projected. */
+    val prefix: String
+)
+
+private class AndroidDrawableProjectionSession(
+    private val projectors: List<AndroidDrawableAttributeProjecting>,
+    private val density: Double,
+    private val drawableState: IntArray
+) {
+    private val activeDrawables = IdentityHashMap<Drawable, Unit>()
+
+    fun attributes(drawable: Drawable, prefix: String): List<RuntimeAttribute> =
+        project(drawable, prefix, depth = 0, includeType = false)
+
+    private fun project(
+        drawable: Drawable,
+        prefix: String,
+        depth: Int,
+        includeType: Boolean
+    ): List<RuntimeAttribute> {
+        if (depth > MAXIMUM_DRAWABLE_PROJECTION_DEPTH || activeDrawables.containsKey(drawable)) {
+            return emptyList()
+        }
+        val projector = runCatching {
+            projectors.firstOrNull { candidate -> candidate.supports(drawable) }
+        }.getOrNull() ?: return emptyList()
+        activeDrawables[drawable] = Unit
+        return try {
+            val projection = runCatching {
+                projector.projection(drawable, prefix, density, drawableState)
+            }.getOrNull() ?: return emptyList()
+            buildList {
+                if (includeType) {
+                    add(stringAttribute("$prefix.type", drawable.javaClass.name))
+                }
+                addAll(projection.attributes)
+                projection.children.forEach { child ->
+                    addAll(project(child.drawable, child.prefix, depth + 1, includeType = true))
+                }
+            }
+        } finally {
+            activeDrawables.remove(drawable)
+        }
+    }
+}
+
+private class AndroidStateListDrawableAttributeProjector :
+    AndroidDrawableAttributeProjecting {
+    override fun supports(drawable: Drawable): Boolean = drawable is StateListDrawable
+
+    override fun projection(
+        drawable: Drawable,
+        prefix: String,
+        density: Double,
+        drawableState: IntArray
+    ): AndroidDrawableProjection {
+        val stateList = drawable as? StateListDrawable
+            ?: return AndroidDrawableProjection(emptyList())
+        val current = stateList.current
+        return AndroidDrawableProjection(
+            attributes = listOf(booleanAttribute("$prefix.current.present", true)),
+            children = listOf(AndroidDrawableProjectionChild(current, "$prefix.current"))
+        )
+    }
+}
+
+private class AndroidInsetDrawableAttributeProjector : AndroidDrawableAttributeProjecting {
+    override fun supports(drawable: Drawable): Boolean = drawable is InsetDrawable
+
+    override fun projection(
+        drawable: Drawable,
+        prefix: String,
+        density: Double,
+        drawableState: IntArray
+    ): AndroidDrawableProjection {
+        val inset = drawable as? InsetDrawable ?: return AndroidDrawableProjection(emptyList())
+        val content = inset.drawable
+        return AndroidDrawableProjection(
+            attributes = buildList {
+                add(booleanAttribute("$prefix.content.present", content != null))
+                if (content != null) {
+                    addEffectiveInsetFacts(inset.bounds, content.bounds, prefix, density)
+                }
+            },
+            children = content?.let { child ->
+                listOf(AndroidDrawableProjectionChild(child, "$prefix.content"))
+            }.orEmpty()
+        )
+    }
+
+    private fun MutableList<RuntimeAttribute>.addEffectiveInsetFacts(
+        outerBounds: Rect,
+        contentBounds: Rect,
+        prefix: String,
+        density: Double
+    ) {
+        if (!outerBounds.hasOrderedEdges() || !contentBounds.hasOrderedEdges()) {
+            return
+        }
+        logicalMeasurement(
+            "$prefix.insets.left",
+            contentBounds.left - outerBounds.left,
+            density
+        )?.let(::add)
+        logicalMeasurement(
+            "$prefix.insets.top",
+            contentBounds.top - outerBounds.top,
+            density
+        )?.let(::add)
+        logicalMeasurement(
+            "$prefix.insets.right",
+            outerBounds.right - contentBounds.right,
+            density
+        )?.let(::add)
+        logicalMeasurement(
+            "$prefix.insets.bottom",
+            outerBounds.bottom - contentBounds.bottom,
+            density
+        )?.let(::add)
+    }
+}
+
+private class AndroidLayerDrawableAttributeProjector : AndroidDrawableAttributeProjecting {
+    override fun supports(drawable: Drawable): Boolean = drawable is LayerDrawable
+
+    override fun projection(
+        drawable: Drawable,
+        prefix: String,
+        density: Double,
+        drawableState: IntArray
+    ): AndroidDrawableProjection {
+        val layerDrawable = drawable as? LayerDrawable
+            ?: return AndroidDrawableProjection(emptyList())
+        val layerCount = layerDrawable.numberOfLayers
+        if (layerCount < 0) {
+            return AndroidDrawableProjection(emptyList())
+        }
+        val projectedLayerCount = layerCount.coerceAtMost(MAXIMUM_DRAWABLE_LAYER_COUNT)
+        val layerProjections = (0 until projectedLayerCount).map { index ->
+            val layerPrefix = "$prefix.layers.layer$index"
+            layerProjection(
+                layerDrawable = layerDrawable,
+                index = index,
+                prefix = layerPrefix,
+                childPrefix = "$layerPrefix.drawable",
+                density = density
+            )
+        }
+        return AndroidDrawableProjection(
+            attributes = buildList {
+                add(integerAttribute("$prefix.layerCount", layerCount.toLong()))
+                add(
+                    integerAttribute(
+                        "$prefix.projectedLayerCount",
+                        projectedLayerCount.toLong()
+                    )
+                )
+                add(
+                    booleanAttribute(
+                        "$prefix.layersTruncated",
+                        projectedLayerCount < layerCount
+                    )
+                )
+                layerProjections.forEach { projection -> addAll(projection.attributes) }
+            },
+            children = layerProjections.flatMap { projection -> projection.children }
+        )
+    }
+}
+
+private class AndroidRippleDrawableAttributeProjector : AndroidDrawableAttributeProjecting {
+    override fun supports(drawable: Drawable): Boolean = drawable is RippleDrawable
+
+    override fun projection(
+        drawable: Drawable,
+        prefix: String,
+        density: Double,
+        drawableState: IntArray
+    ): AndroidDrawableProjection {
+        val ripple = drawable as? RippleDrawable
+            ?: return AndroidDrawableProjection(emptyList())
+        val layerCount = ripple.numberOfLayers
+        if (layerCount < 0) {
+            return AndroidDrawableProjection(emptyList())
+        }
+        val maskIndex = ripple.findIndexByLayerId(android.R.id.mask)
+            .takeIf { index -> index in 0 until layerCount }
+        val contentLayerCount = layerCount - if (maskIndex == null) 0 else 1
+        val contentIndices = buildList {
+            var layerIndex = 0
+            while (
+                layerIndex < layerCount &&
+                size < MAXIMUM_DRAWABLE_LAYER_COUNT
+            ) {
+                if (layerIndex != maskIndex) {
+                    add(layerIndex)
+                }
+                layerIndex += 1
+            }
+        }
+        val contentProjections = contentIndices.mapIndexed { contentIndex, layerIndex ->
+            val contentPrefix = "$prefix.contents.content$contentIndex"
+            layerProjection(
+                layerDrawable = ripple,
+                index = layerIndex,
+                prefix = contentPrefix,
+                childPrefix = "$contentPrefix.drawable",
+                density = density
+            )
+        }
+        val maskProjection = maskIndex?.let { index ->
+            layerProjection(
+                layerDrawable = ripple,
+                index = index,
+                prefix = "$prefix.mask",
+                childPrefix = "$prefix.mask.drawable",
+                density = density
+            )
+        }
+        return AndroidDrawableProjection(
+            attributes = buildList {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    resolvedColor(ripple.effectColor, drawableState)?.let { color ->
+                        add(colorAttribute("$prefix.effectColor", color))
+                    }
+                }
+                add(integerAttribute("$prefix.contentLayerCount", contentLayerCount.toLong()))
+                add(
+                    integerAttribute(
+                        "$prefix.projectedContentLayerCount",
+                        contentIndices.size.toLong()
+                    )
+                )
+                add(
+                    booleanAttribute(
+                        "$prefix.contentLayersTruncated",
+                        contentIndices.size < contentLayerCount
+                    )
+                )
+                add(booleanAttribute("$prefix.mask.present", maskProjection != null))
+                contentProjections.forEach { projection -> addAll(projection.attributes) }
+                maskProjection?.let { projection -> addAll(projection.attributes) }
+            },
+            children = buildList {
+                contentProjections.forEach { projection -> addAll(projection.children) }
+                maskProjection?.let { projection -> addAll(projection.children) }
+            }
+        )
+    }
+}
+
+private fun layerProjection(
+    layerDrawable: LayerDrawable,
+    index: Int,
+    prefix: String,
+    childPrefix: String,
+    density: Double
+): AndroidDrawableProjection {
+    val child = layerDrawable.getDrawable(index)
+    return AndroidDrawableProjection(
+        attributes = buildList {
+            add(integerAttribute("$prefix.id", layerDrawable.getId(index).toLong()))
+            child.bounds.takeIf(Rect::hasOrderedEdges)?.let { bounds ->
+                add(rectAttribute("$prefix.bounds", bounds, density))
+            }
+            addLayerInset("$prefix.insets.left", layerDrawable.getLayerInsetLeft(index), density)
+            addLayerInset("$prefix.insets.top", layerDrawable.getLayerInsetTop(index), density)
+            addLayerInset("$prefix.insets.right", layerDrawable.getLayerInsetRight(index), density)
+            addLayerInset("$prefix.insets.bottom", layerDrawable.getLayerInsetBottom(index), density)
+        },
+        children = listOf(AndroidDrawableProjectionChild(child, childPrefix))
+    )
+}
+
+private fun MutableList<RuntimeAttribute>.addLayerInset(
+    identifier: String,
+    pixels: Int,
+    density: Double
+) {
+    if (pixels == LayerDrawable.INSET_UNDEFINED) {
+        return
+    }
+    logicalMeasurement(identifier, pixels, density)?.let(::add)
 }
 
 private class AndroidColorDrawableAttributeProjector : AndroidDrawableAttributeProjecting {
     override fun supports(drawable: Drawable): Boolean = drawable is ColorDrawable
 
-    override fun attributes(
+    override fun projection(
         drawable: Drawable,
         prefix: String,
         density: Double,
         drawableState: IntArray
-    ): List<RuntimeAttribute> {
-        val colorDrawable = drawable as? ColorDrawable ?: return emptyList()
-        return listOf(colorAttribute("$prefix.color", colorDrawable.color))
+    ): AndroidDrawableProjection {
+        val colorDrawable = drawable as? ColorDrawable
+            ?: return AndroidDrawableProjection(emptyList())
+        return AndroidDrawableProjection(
+            listOf(colorAttribute("$prefix.color", colorDrawable.color))
+        )
     }
 }
 
 private class AndroidGradientDrawableAttributeProjector : AndroidDrawableAttributeProjecting {
     override fun supports(drawable: Drawable): Boolean = drawable is GradientDrawable
 
-    override fun attributes(
+    override fun projection(
         drawable: Drawable,
         prefix: String,
         density: Double,
         drawableState: IntArray
-    ): List<RuntimeAttribute> {
-        val gradient = drawable as? GradientDrawable ?: return emptyList()
+    ): AndroidDrawableProjection {
+        val gradient = drawable as? GradientDrawable
+            ?: return AndroidDrawableProjection(emptyList())
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
-            return emptyList()
+            return AndroidDrawableProjection(emptyList())
         }
-        return buildList {
-            add(stringAttribute("$prefix.shape", shapeName(gradient.shape)))
-            resolvedColor(gradient.color, drawableState)?.let { color ->
-                add(colorAttribute("$prefix.color", color))
-            }
-            addCornerFacts(gradient, prefix, density)
-            val colors = gradient.colors
-            if (colors != null) {
-                add(stringAttribute("$prefix.gradient.type", gradientTypeName(gradient.gradientType)))
-                if (gradient.gradientType == GradientDrawable.LINEAR_GRADIENT) {
+        return AndroidDrawableProjection(
+            attributes = buildList {
+                add(stringAttribute("$prefix.shape", shapeName(gradient.shape)))
+                resolvedColor(gradient.color, drawableState)?.let { color ->
+                    add(colorAttribute("$prefix.color", color))
+                }
+                addCornerFacts(gradient, prefix, density)
+                val colors = gradient.colors
+                if (colors != null) {
                     add(
                         stringAttribute(
-                            "$prefix.gradient.orientation",
-                            orientationName(gradient.orientation)
+                            "$prefix.gradient.type",
+                            gradientTypeName(gradient.gradientType)
                         )
                     )
-                }
-                add(
-                    stringListAttribute(
-                        "$prefix.gradient.colors",
-                        colors.take(MAXIMUM_GRADIENT_COLOR_COUNT).map(::argbHex)
+                    if (gradient.gradientType == GradientDrawable.LINEAR_GRADIENT) {
+                        add(
+                            stringAttribute(
+                                "$prefix.gradient.orientation",
+                                orientationName(gradient.orientation)
+                            )
+                        )
+                    }
+                    add(
+                        stringListAttribute(
+                            "$prefix.gradient.colors",
+                            colors.take(MAXIMUM_GRADIENT_COLOR_COUNT).map(::argbHex)
+                        )
                     )
-                )
-                add(integerAttribute("$prefix.gradient.colorCount", colors.size.toLong()))
-                add(
-                    booleanAttribute(
-                        "$prefix.gradient.colorsTruncated",
-                        colors.size > MAXIMUM_GRADIENT_COLOR_COUNT
+                    add(integerAttribute("$prefix.gradient.colorCount", colors.size.toLong()))
+                    add(
+                        booleanAttribute(
+                            "$prefix.gradient.colorsTruncated",
+                            colors.size > MAXIMUM_GRADIENT_COLOR_COUNT
+                        )
                     )
-                )
-                add(booleanAttribute("$prefix.gradient.useLevel", gradient.useLevel))
-                if (gradient.gradientType != GradientDrawable.LINEAR_GRADIENT) {
-                    finiteNumberAttribute(
-                        "$prefix.gradient.centerX",
-                        gradient.gradientCenterX
-                    )?.let(::add)
-                    finiteNumberAttribute(
-                        "$prefix.gradient.centerY",
-                        gradient.gradientCenterY
-                    )?.let(::add)
-                    if (gradient.gradientType == GradientDrawable.RADIAL_GRADIENT) {
-                        logicalMeasurement(
-                            "$prefix.gradient.radius",
-                            gradient.gradientRadius,
-                            density
+                    add(booleanAttribute("$prefix.gradient.useLevel", gradient.useLevel))
+                    if (gradient.gradientType != GradientDrawable.LINEAR_GRADIENT) {
+                        finiteNumberAttribute(
+                            "$prefix.gradient.centerX",
+                            gradient.gradientCenterX
                         )?.let(::add)
+                        finiteNumberAttribute(
+                            "$prefix.gradient.centerY",
+                            gradient.gradientCenterY
+                        )?.let(::add)
+                        if (gradient.gradientType == GradientDrawable.RADIAL_GRADIENT) {
+                            logicalMeasurement(
+                                "$prefix.gradient.radius",
+                                gradient.gradientRadius,
+                                density
+                            )?.let(::add)
+                        }
                     }
                 }
             }
-        }
+        )
     }
 
     private fun MutableList<RuntimeAttribute>.addCornerFacts(
@@ -369,4 +687,8 @@ private fun rectAttribute(
     )
 )
 
+private fun Rect.hasOrderedEdges(): Boolean = left <= right && top <= bottom
+
+private const val MAXIMUM_DRAWABLE_PROJECTION_DEPTH: Int = 8
+private const val MAXIMUM_DRAWABLE_LAYER_COUNT: Int = 16
 private const val UNSIGNED_INT_MASK: Long = 0xFFFF_FFFFL

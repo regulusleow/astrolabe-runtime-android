@@ -12,15 +12,21 @@ import android.graphics.Color
 import android.graphics.Outline
 import android.graphics.Rect
 import android.graphics.drawable.ColorDrawable
+import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.InsetDrawable
+import android.graphics.drawable.LayerDrawable
+import android.graphics.drawable.RippleDrawable
+import android.graphics.drawable.StateListDrawable
 import android.os.Build
+import android.util.StateSet
 import android.view.View
 import android.view.ViewOutlineProvider
 import android.widget.FrameLayout
 import android.widget.ImageView
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import dev.astrolabe.protocol.RuntimeAttribute
 import dev.astrolabe.protocol.RuntimeAttributeValue
 import dev.astrolabe.protocol.RuntimeCoordinateSpace
 import dev.astrolabe.protocol.RuntimeMeasurementUnit
@@ -111,6 +117,36 @@ class AndroidViewRenderAttributeCollectorTest {
                 Color.argb(128, 10, 20, 30),
                 nodeDetail(view).attribute("android.render.background.color")
             )
+        }
+    }
+
+    @Test
+    fun stateListDrawableProjectsOnlyCurrentDrawable() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync {
+            val drawable = StateListDrawable().apply {
+                addState(
+                    intArrayOf(android.R.attr.state_pressed),
+                    ColorDrawable(Color.RED)
+                )
+                addState(StateSet.WILD_CARD, ColorDrawable(Color.BLUE))
+            }
+            val view = View(instrumentation.targetContext).apply {
+                background = drawable
+                isPressed = true
+            }
+            val payload = nodeDetail(view)
+
+            assertTrue(payload.boolean("android.render.background.current.present"))
+            assertEquals(
+                ColorDrawable::class.java.name,
+                payload.string("android.render.background.current.type")
+            )
+            assertColor(
+                Color.RED,
+                payload.attribute("android.render.background.current.color")
+            )
+            assertNull(payload.attribute("android.render.background.states"))
         }
     }
 
@@ -279,21 +315,306 @@ class AndroidViewRenderAttributeCollectorTest {
     }
 
     @Test
-    fun unsupportedDrawableExposesTypeWithoutInventedSemantics() {
+    fun insetDrawableProjectsContentAndEffectiveInsets() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         instrumentation.runOnMainSync {
+            val drawable = InsetDrawable(ColorDrawable(Color.RED), 2, 3, 4, 5).apply {
+                bounds = Rect(0, 0, 100, 80)
+            }
             val view = View(instrumentation.targetContext).apply {
-                background = InsetDrawable(ColorDrawable(Color.RED), 4)
+                background = drawable
+                layout(0, 0, 100, 80)
             }
             val payload = nodeDetail(view)
+            val density = view.resources.displayMetrics.density.toDouble()
 
             assertEquals(
                 InsetDrawable::class.java.name,
                 payload.string("android.render.background.type")
             )
-            assertNull(payload.attribute("android.render.background.color"))
-            assertNull(payload.attribute("android.render.background.shape"))
+            assertEquals(
+                ColorDrawable::class.java.name,
+                payload.string("android.render.background.content.type")
+            )
+            assertColor(
+                Color.RED,
+                payload.attribute("android.render.background.content.color")
+            )
+            assertEquals(
+                2.0 / density,
+                payload.measurement("android.render.background.insets.left"),
+                0.0001
+            )
+            assertEquals(
+                3.0 / density,
+                payload.measurement("android.render.background.insets.top"),
+                0.0001
+            )
+            assertEquals(
+                4.0 / density,
+                payload.measurement("android.render.background.insets.right"),
+                0.0001
+            )
+            assertEquals(
+                5.0 / density,
+                payload.measurement("android.render.background.insets.bottom"),
+                0.0001
+            )
         }
+    }
+
+    @Test
+    fun layerDrawableProjectsBoundedLayerFacts() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync {
+            val drawable = LayerDrawable(
+                arrayOf(
+                    ColorDrawable(Color.RED),
+                    ColorDrawable(Color.BLUE)
+                )
+            ).apply {
+                setId(0, 101)
+                setId(1, 202)
+                setLayerInset(0, 2, 3, 4, 5)
+                bounds = Rect(0, 0, 100, 80)
+            }
+            val view = View(instrumentation.targetContext).apply {
+                background = drawable
+            }
+            val payload = nodeDetail(view)
+            val density = view.resources.displayMetrics.density.toDouble()
+            val bounds = (payload.attribute("android.render.background.layers.layer0.bounds") as
+                RuntimeAttributeValue.Rect).value
+
+            assertEquals(2L, payload.integer("android.render.background.layerCount"))
+            assertEquals(2L, payload.integer("android.render.background.projectedLayerCount"))
+            assertFalse(payload.boolean("android.render.background.layersTruncated"))
+            assertEquals(101L, payload.integer("android.render.background.layers.layer0.id"))
+            assertEquals(2.0 / density, bounds.x, 0.0001)
+            assertEquals(3.0 / density, bounds.y, 0.0001)
+            assertEquals(94.0 / density, bounds.width, 0.0001)
+            assertEquals(72.0 / density, bounds.height, 0.0001)
+            assertEquals(
+                2.0 / density,
+                payload.measurement("android.render.background.layers.layer0.insets.left"),
+                0.0001
+            )
+            assertEquals(
+                ColorDrawable::class.java.name,
+                payload.string("android.render.background.layers.layer0.drawable.type")
+            )
+            assertColor(
+                Color.RED,
+                payload.attribute("android.render.background.layers.layer0.drawable.color")
+            )
+        }
+    }
+
+    @Test
+    fun layerDrawableStopsAtMaximumLayerCount() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync {
+            val drawable = LayerDrawable(
+                Array(20) { index -> ColorDrawable(Color.rgb(index, 0, 0)) }
+            ).apply {
+                bounds = Rect(0, 0, 100, 100)
+            }
+            val view = View(instrumentation.targetContext).apply {
+                background = drawable
+            }
+            val payload = nodeDetail(view)
+
+            assertEquals(20L, payload.integer("android.render.background.layerCount"))
+            assertEquals(16L, payload.integer("android.render.background.projectedLayerCount"))
+            assertTrue(payload.boolean("android.render.background.layersTruncated"))
+            assertEquals(
+                ColorDrawable::class.java.name,
+                payload.string("android.render.background.layers.layer15.drawable.type")
+            )
+            assertNull(payload.attribute("android.render.background.layers.layer16.drawable.type"))
+        }
+    }
+
+    @Test
+    fun layerDrawableOmitsInvalidCurrentBounds() {
+        val child = ColorDrawable(Color.RED)
+        val drawable = LayerDrawable(arrayOf(child))
+        child.bounds = Rect(10, 10, 0, 0)
+        val attributes = AndroidDrawableAttributeProjectorRegistry().attributes(
+            drawable = drawable,
+            prefix = "test.drawable",
+            density = 1.0,
+            drawableState = intArrayOf()
+        )
+
+        assertEquals(
+            1L,
+            (attributes.attribute("test.drawable.layerCount") as
+                RuntimeAttributeValue.Integer).value
+        )
+        assertNull(attributes.attribute("test.drawable.layers.layer0.bounds"))
+        assertColor(Color.RED, attributes.attribute("test.drawable.layers.layer0.drawable.color"))
+    }
+
+    @Test
+    fun rippleDrawableProjectsCurrentEffectColorContentAndMask() {
+        assumeTrue(Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync {
+            val effectColors = ColorStateList(
+                arrayOf(intArrayOf(android.R.attr.state_pressed), StateSet.WILD_CARD),
+                intArrayOf(Color.GREEN, Color.YELLOW)
+            )
+            val drawable = RippleDrawable(
+                ColorStateList.valueOf(Color.BLUE),
+                ColorDrawable(Color.RED),
+                ColorDrawable(Color.BLACK)
+            ).apply {
+                setEffectColor(effectColors)
+                bounds = Rect(0, 0, 100, 80)
+            }
+            val view = View(instrumentation.targetContext).apply {
+                background = drawable
+                isPressed = true
+            }
+            val payload = nodeDetail(view)
+
+            assertColor(Color.GREEN, payload.attribute("android.render.background.effectColor"))
+            assertNull(payload.attribute("android.render.background.color"))
+            assertEquals(1L, payload.integer("android.render.background.contentLayerCount"))
+            assertEquals(
+                1L,
+                payload.integer("android.render.background.projectedContentLayerCount")
+            )
+            assertFalse(payload.boolean("android.render.background.contentLayersTruncated"))
+            assertEquals(
+                ColorDrawable::class.java.name,
+                payload.string("android.render.background.contents.content0.drawable.type")
+            )
+            assertColor(
+                Color.RED,
+                payload.attribute("android.render.background.contents.content0.drawable.color")
+            )
+            assertTrue(payload.boolean("android.render.background.mask.present"))
+            assertEquals(
+                ColorDrawable::class.java.name,
+                payload.string("android.render.background.mask.drawable.type")
+            )
+            assertColor(
+                Color.BLACK,
+                payload.attribute("android.render.background.mask.drawable.color")
+            )
+        }
+    }
+
+    @Test
+    fun rippleDrawableStopsAtMaximumContentLayerCount() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync {
+            val drawable = RippleDrawable(
+                ColorStateList.valueOf(Color.BLUE),
+                ColorDrawable(Color.RED),
+                ColorDrawable(Color.BLACK)
+            ).apply {
+                repeat(19) { index ->
+                    addLayer(ColorDrawable(Color.rgb(index, 0, 0)))
+                }
+                bounds = Rect(0, 0, 100, 100)
+            }
+            val view = View(instrumentation.targetContext).apply {
+                background = drawable
+            }
+            val payload = nodeDetail(view)
+
+            assertEquals(20L, payload.integer("android.render.background.contentLayerCount"))
+            assertEquals(
+                16L,
+                payload.integer("android.render.background.projectedContentLayerCount")
+            )
+            assertTrue(payload.boolean("android.render.background.contentLayersTruncated"))
+            assertEquals(
+                ColorDrawable::class.java.name,
+                payload.string("android.render.background.contents.content15.drawable.type")
+            )
+            assertNull(
+                payload.attribute("android.render.background.contents.content16.drawable.type")
+            )
+            assertTrue(payload.boolean("android.render.background.mask.present"))
+        }
+    }
+
+    @Test
+    fun drawableProjectionStopsAtMaximumDepth() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync {
+            var drawable: Drawable = ColorDrawable(Color.RED)
+            repeat(10) {
+                drawable = InsetDrawable(drawable, 1)
+            }
+            val view = View(instrumentation.targetContext).apply {
+                background = drawable
+                layout(0, 0, 100, 100)
+            }
+            val payload = nodeDetail(view)
+
+            assertEquals(
+                InsetDrawable::class.java.name,
+                payload.string(
+                    "android.render.background.content.content.content.content.content.content" +
+                        ".content.content.type"
+                )
+            )
+            assertNull(
+                payload.attribute(
+                    "android.render.background.content.content.content.content.content.content" +
+                        ".content.content.content.type"
+                )
+            )
+        }
+    }
+
+    @Test
+    fun drawableProjectionStopsAtIdentityCycle() {
+        val cyclicDrawable = object : InsetDrawable(ColorDrawable(Color.RED), 0) {
+            override fun getDrawable(): Drawable = this
+        }
+        val attributes = AndroidDrawableAttributeProjectorRegistry().attributes(
+            drawable = cyclicDrawable,
+            prefix = "test.drawable",
+            density = 1.0,
+            drawableState = intArrayOf()
+        )
+
+        assertTrue(
+            (attributes.attribute("test.drawable.content.present") as
+                RuntimeAttributeValue.BooleanValue).value
+        )
+        assertNull(attributes.attribute("test.drawable.content.type"))
+    }
+
+    @Test
+    fun drawableProjectionFailsClosedWhenProjectorThrows() {
+        val throwingProjector = object : AndroidDrawableAttributeProjecting {
+            override fun supports(drawable: Drawable): Boolean = drawable is ColorDrawable
+
+            override fun projection(
+                drawable: Drawable,
+                prefix: String,
+                density: Double,
+                drawableState: IntArray
+            ): AndroidDrawableProjection = error("测试投影器异常")
+        }
+
+        val attributes = AndroidDrawableAttributeProjectorRegistry(
+            projectors = listOf(throwingProjector)
+        ).attributes(
+            drawable = ColorDrawable(Color.RED),
+            prefix = "test.drawable",
+            density = 1.0,
+            drawableState = intArrayOf()
+        )
+
+        assertTrue(attributes.isEmpty())
     }
 
     @Test
@@ -406,6 +727,9 @@ class AndroidViewRenderAttributeCollectorTest {
             .firstOrNull { attribute -> attribute.identifier.rawValue == identifier }
             ?.value
 
+    private fun List<RuntimeAttribute>.attribute(identifier: String): RuntimeAttributeValue? =
+        firstOrNull { attribute -> attribute.identifier.rawValue == identifier }?.value
+
     private fun RuntimeNodeDetailPayload.boolean(identifier: String): Boolean =
         (attribute(identifier) as RuntimeAttributeValue.BooleanValue).value
 
@@ -414,6 +738,9 @@ class AndroidViewRenderAttributeCollectorTest {
 
     private fun RuntimeNodeDetailPayload.measurement(identifier: String): Double =
         (attribute(identifier) as RuntimeAttributeValue.Measurement).value.value
+
+    private fun RuntimeNodeDetailPayload.integer(identifier: String): Long =
+        (attribute(identifier) as RuntimeAttributeValue.Integer).value
 
     private fun assertColor(expected: Int, value: RuntimeAttributeValue?) {
         val color = (value as RuntimeAttributeValue.Color).value
