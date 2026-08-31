@@ -18,6 +18,7 @@ import android.os.Build
 import android.view.View
 import android.view.ViewOutlineProvider
 import android.widget.FrameLayout
+import android.widget.ImageView
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import dev.astrolabe.protocol.RuntimeAttributeValue
@@ -292,6 +293,99 @@ class AndroidViewRenderAttributeCollectorTest {
             )
             assertNull(payload.attribute("android.render.background.color"))
             assertNull(payload.attribute("android.render.background.shape"))
+        }
+    }
+
+    @Test
+    fun centerImageExposesRenderedBoundsOutsideView() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync {
+            val imageView = ImageView(instrumentation.targetContext).apply {
+                setImageDrawable(GradientDrawable().apply { setSize(56, 56) })
+                scaleType = ImageView.ScaleType.CENTER
+                layout(0, 0, 28, 28)
+            }
+            val payload = nodeDetail(imageView)
+            val density = imageView.resources.displayMetrics.density.toDouble()
+            val renderedBounds = (payload.attribute("android.image.renderedBounds") as
+                RuntimeAttributeValue.Rect).value
+
+            assertEquals(-14.0 / density, renderedBounds.x, 0.0001)
+            assertEquals(-14.0 / density, renderedBounds.y, 0.0001)
+            assertEquals(56.0 / density, renderedBounds.width, 0.0001)
+            assertEquals(56.0 / density, renderedBounds.height, 0.0001)
+            assertEquals(RuntimeCoordinateSpace.local, renderedBounds.coordinateSpace)
+            assertEquals(RuntimeMeasurementUnit.logical, renderedBounds.unit)
+            assertTrue(payload.boolean("android.image.overflowsViewBounds"))
+        }
+    }
+
+    @Test
+    fun overflowingImageExposesVisibleBoundsWithinView() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync {
+            val imageView = ImageView(instrumentation.targetContext).apply {
+                setImageDrawable(GradientDrawable().apply { setSize(56, 56) })
+                scaleType = ImageView.ScaleType.CENTER
+                layout(0, 0, 28, 28)
+            }
+            val payload = nodeDetail(imageView)
+            val density = imageView.resources.displayMetrics.density.toDouble()
+            val visibleBounds = (payload.attribute("android.image.visibleBoundsInView") as
+                RuntimeAttributeValue.Rect).value
+
+            assertEquals(0.0, visibleBounds.x, 0.0001)
+            assertEquals(0.0, visibleBounds.y, 0.0001)
+            assertEquals(28.0 / density, visibleBounds.width, 0.0001)
+            assertEquals(28.0 / density, visibleBounds.height, 0.0001)
+            assertEquals(RuntimeCoordinateSpace.local, visibleBounds.coordinateSpace)
+            assertEquals(RuntimeMeasurementUnit.logical, visibleBounds.unit)
+        }
+    }
+
+    @Test
+    fun cropToPaddingRestrictsVisibleImageBounds() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync {
+            val imageView = ImageView(instrumentation.targetContext).apply {
+                setPadding(5, 5, 5, 5)
+                setImageDrawable(GradientDrawable().apply { setSize(40, 40) })
+                scaleType = ImageView.ScaleType.CENTER
+                cropToPadding = true
+                layout(0, 0, 40, 40)
+            }
+            val payload = nodeDetail(imageView)
+            val density = imageView.resources.displayMetrics.density.toDouble()
+            val visibleBounds = (payload.attribute("android.image.visibleBoundsInView") as
+                RuntimeAttributeValue.Rect).value
+
+            assertTrue(payload.boolean("android.image.cropToPadding"))
+            assertEquals(5.0 / density, visibleBounds.x, 0.0001)
+            assertEquals(5.0 / density, visibleBounds.y, 0.0001)
+            assertEquals(30.0 / density, visibleBounds.width, 0.0001)
+            assertEquals(30.0 / density, visibleBounds.height, 0.0001)
+        }
+    }
+
+    @Test
+    fun clipBoundsRestrictVisibleImageBounds() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync {
+            val imageView = ImageView(instrumentation.targetContext).apply {
+                setImageDrawable(GradientDrawable().apply { setSize(40, 40) })
+                scaleType = ImageView.ScaleType.FIT_XY
+                clipBounds = Rect(4, 6, 30, 32)
+                layout(0, 0, 40, 40)
+            }
+            val payload = nodeDetail(imageView)
+            val density = imageView.resources.displayMetrics.density.toDouble()
+            val visibleBounds = (payload.attribute("android.image.visibleBoundsInView") as
+                RuntimeAttributeValue.Rect).value
+
+            assertEquals(4.0 / density, visibleBounds.x, 0.0001)
+            assertEquals(6.0 / density, visibleBounds.y, 0.0001)
+            assertEquals(26.0 / density, visibleBounds.width, 0.0001)
+            assertEquals(26.0 / density, visibleBounds.height, 0.0001)
         }
     }
 
