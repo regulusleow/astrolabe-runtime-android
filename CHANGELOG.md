@@ -2,6 +2,13 @@
 
 All notable changes to Astrolabe Runtime for Android are documented here.
 
+## 2.3.0
+
+- Added ImageView rendered bounds, visible bounds, crop-to-padding state, and
+  overflow inspection so tooling can report how image content is actually drawn.
+- Added bounded current-state inspection for state-list, ripple, inset, and
+  layered drawables, including selected content, masks, insets, and layer facts.
+
 ## 2.2.0
 
 - Added bounded render semantics for backgrounds, foregrounds, tint colors,
