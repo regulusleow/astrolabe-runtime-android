@@ -7,6 +7,7 @@
 
 package dev.astrolabe.runtime.view
 
+import android.graphics.RectF
 import android.os.Build
 import android.text.TextUtils
 import android.util.TypedValue
@@ -22,6 +23,8 @@ import android.widget.TextView
 import dev.astrolabe.protocol.RuntimeAttribute
 import dev.astrolabe.protocol.RuntimeAttributeCategory
 import dev.astrolabe.protocol.RuntimeAttributeValue
+import dev.astrolabe.protocol.RuntimeCoordinateRect
+import dev.astrolabe.protocol.RuntimeCoordinateSpace
 import dev.astrolabe.protocol.RuntimeMeasuredSize
 import dev.astrolabe.protocol.RuntimeMeasurement
 import dev.astrolabe.protocol.RuntimeMeasurementUnit
@@ -136,8 +139,28 @@ internal class AndroidImageAttributeCollector : AndroidViewAttributeCollecting {
         return buildList {
             add(booleanValue("android.image.present", drawable != null))
             add(stringValue("android.image.scaleType", imageView.scaleType.name))
+            add(booleanValue("android.image.cropToPadding", imageView.cropToPadding))
             if (drawable != null) {
                 add(stringValue("android.image.drawableType", drawable.javaClass.name))
+                renderedImageBounds(imageView, density)?.let { bounds ->
+                    add(rectValue("android.image.renderedBounds", bounds, density))
+                    add(
+                        rectValue(
+                            "android.image.visibleBoundsInView",
+                            visibleImageBoundsInView(imageView, bounds),
+                            density
+                        )
+                    )
+                    add(
+                        booleanValue(
+                            "android.image.overflowsViewBounds",
+                            bounds.left < 0f ||
+                                bounds.top < 0f ||
+                                bounds.right > imageView.width.toFloat() ||
+                                bounds.bottom > imageView.height.toFloat()
+                        )
+                    )
+                }
                 if (drawable.intrinsicWidth >= 0 && drawable.intrinsicHeight >= 0) {
                     add(
                         runtimeAttribute(
@@ -165,6 +188,55 @@ internal class AndroidImageAttributeCollector : AndroidViewAttributeCollecting {
                 )
             }
         }
+    }
+}
+
+private fun visibleImageBoundsInView(imageView: ImageView, renderedBounds: RectF): RectF {
+    val visibleBounds = RectF(renderedBounds)
+    if (!visibleBounds.intersect(0f, 0f, imageView.width.toFloat(), imageView.height.toFloat())) {
+        visibleBounds.setEmpty()
+        return visibleBounds
+    }
+    if (imageView.cropToPadding && !visibleBounds.intersect(
+            (imageView.scrollX + imageView.paddingLeft).toFloat(),
+            (imageView.scrollY + imageView.paddingTop).toFloat(),
+            (imageView.scrollX + imageView.width - imageView.paddingRight).toFloat(),
+            (imageView.scrollY + imageView.height - imageView.paddingBottom).toFloat()
+        )
+    ) {
+        visibleBounds.setEmpty()
+        return visibleBounds
+    }
+    imageView.clipBounds?.let { clipBounds ->
+        if (!visibleBounds.intersect(
+                clipBounds.left.toFloat(),
+                clipBounds.top.toFloat(),
+                clipBounds.right.toFloat(),
+                clipBounds.bottom.toFloat()
+            )
+        ) {
+            visibleBounds.setEmpty()
+        }
+    }
+    return visibleBounds
+}
+
+private fun renderedImageBounds(imageView: ImageView, density: Double): RectF? {
+    if (!density.isFinite() || density <= 0.0) {
+        return null
+    }
+    val drawable = imageView.drawable ?: return null
+    val bounds = RectF(drawable.bounds)
+    if (bounds.isEmpty) {
+        return null
+    }
+    imageView.imageMatrix.mapRect(bounds)
+    bounds.offset(imageView.paddingLeft.toFloat(), imageView.paddingTop.toFloat())
+    return bounds.takeIf { value ->
+        value.left.isFinite() &&
+            value.top.isFinite() &&
+            value.right.isFinite() &&
+            value.bottom.isFinite()
     }
 }
 
@@ -225,6 +297,21 @@ private fun measurementValue(identifier: String, value: Double): RuntimeAttribut
         identifier,
         RuntimeAttributeValue.Measurement(
             RuntimeMeasurement(value, RuntimeMeasurementUnit.logical)
+        )
+    )
+
+private fun rectValue(identifier: String, bounds: RectF, density: Double): RuntimeAttribute =
+    runtimeAttribute(
+        identifier,
+        RuntimeAttributeValue.Rect(
+            RuntimeCoordinateRect(
+                x = bounds.left.toDouble() / density,
+                y = bounds.top.toDouble() / density,
+                width = bounds.width().toDouble() / density,
+                height = bounds.height().toDouble() / density,
+                coordinateSpace = RuntimeCoordinateSpace.local,
+                unit = RuntimeMeasurementUnit.logical
+            )
         )
     )
 
