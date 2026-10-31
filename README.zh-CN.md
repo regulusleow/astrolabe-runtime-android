@@ -84,8 +84,6 @@ Instrumentation 测试需要模拟器或真机：
   :astrolabe-runtime-view:connectedDebugAndroidTest
 ```
 
-发布维护者请参阅 [docs/releasing.md](docs/releasing.md)。
-
 ## 安全
 
 Runtime 通过 ADB 转发访问进程级 abstract local socket。它不提供任意方法调用或

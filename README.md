@@ -92,8 +92,6 @@ Instrumentation tests require an emulator or physical device:
   :astrolabe-runtime-view:connectedDebugAndroidTest
 ```
 
-Release maintainers should follow [docs/releasing.md](docs/releasing.md).
-
 ## Security
 
 The Runtime exposes a process-scoped abstract local socket reachable through

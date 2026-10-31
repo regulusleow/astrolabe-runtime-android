@@ -10,7 +10,6 @@ test("release metadata is consistent and Protocol uses the same major version", 
     readme,
     chineseReadme,
     changelog,
-    releaseGuide,
     ciWorkflow
   ] = await Promise.all([
     readFile("gradle.properties", "utf8"),
@@ -19,7 +18,6 @@ test("release metadata is consistent and Protocol uses the same major version", 
     readFile("README.md", "utf8"),
     readFile("README.zh-CN.md", "utf8"),
     readFile("CHANGELOG.md", "utf8"),
-    readFile("docs/releasing.md", "utf8"),
     readFile(".github/workflows/ci.yml", "utf8")
   ]);
 
@@ -65,10 +63,6 @@ test("release metadata is consistent and Protocol uses the same major version", 
     new RegExp(`astrolabe-runtime-android:${runtimeVersion}`)
   );
   assert.match(changelog, new RegExp(`^## ${runtimeVersion}$`, "m"));
-  assert.match(
-    releaseGuide,
-    new RegExp(`^RELEASE_TAG=${runtimeVersion} \\\\$`, "m")
-  );
 });
 
 function requiredCapture(source, pattern, label) {
